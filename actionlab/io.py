@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import pandas as pd
 
+__all__ = ['get_trial', 'DataFile', 'SubjectData']
 ### General functions
 
 def get_trial(df, block, trial_number, block_col='BlockNumber', 
@@ -64,3 +65,27 @@ class SubjectData:
         """Method implication of get_trial()"""
         return get_trial(self.data, block, trial_number, block_col='BlockNumber', 
                          trial_col='TrialNumber')
+
+    def get_header(self, name, dtype=None, index=None):
+        """Get header value from every trial"""
+        
+        if index is None:
+            data = self.data_file_list
+        else:
+            data = self.data_file_list[index]
+        
+        list_ = []
+        for i in data:
+            list_.append(i.headers[name])
+
+        if dtype is not None:
+            list_ = list(map(dtype, list_))
+            
+        return list_
+
+
+
+
+
+
+
