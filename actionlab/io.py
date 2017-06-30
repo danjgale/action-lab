@@ -16,39 +16,88 @@ def get_trial(df, block, trial_number, block_col='BlockNumber',
 
 class DataFile:
     def __init__(self, fn, data_start, sep='\t'):
-        """ Handles single-trial data from a single .dat file. Note that the
-        headers attribute is a Series containing all strings."""
+        """ Handles single-trial data from a single .dat file.
 
+        Note that the headers attribute is a Series containing all strings by
+        default. self.change_dtype() or SubjectData.get_header() can 
+        conveniently chnage the data type of a header if a string is not 
+        desired. 
+
+        Parameters:
+        -----------
+        fn : str
+            File name/path.
+        data_start : int
+            Line number in the data file in which the data column headers 
+            begin. 
+        sep = str
+            Delimiter type. Default is tab-delimited.
+
+        Attributes:
+        -----------
+        headers : Series
+            Pandas Series containing all header data found in file.
+        data : DataFrame
+            Pandas DataFrame containing time-varying trial data. 
+        """
+
+        # make correction
         header_rows = data_start - 4 
         # drop excess column almost all filled with NANs
         headers = (pd.read_table(fn, sep='\t', nrows=header_rows))
-        # remove any duplicate indices, important for SubjectData.select_trials()
+        # remove any duplicate indices
         headers = headers.drop(headers.columns[1], axis=1).squeeze()
         self.headers = headers[~headers.index.duplicated(keep='first')]
-        self.block = self.headers['BlockNumber']
-        self.trial = self.headers['TrialNumber']
-        self.frequency = self.headers['DataRecordFrequency']
-        
+
         self.data = pd.read_csv(fn, sep=sep, skiprows=data_start - 2)
         
 class SubjectData:
-    def __init__(self, path, subject, data_start, sep='\t'):
-        """ Class to represent all data belonging to a single subject """
-        self.id = subject
-        self.data_path = os.path.join(path, subject)
-        self.files = [i for i in os.listdir(self.data_path) if i.endswith('.dat')]
+    def __init__(self, path, data_start, sep='\t'):
+        """ Class containing all trial data belonging to a single subject. 
+
+        Main class that assembles all of a subject's data, with variety of 
+        methods to access and combine various trials. The current
+        implementation assumes that all data files have the same data start
+        number. This is a safe assumption, as this is largely the
+        case. 
+
+        Parameters:
+        -----------
+        path : str
+            Path to subject folder/directory.
+        data_start : int
+            Line number in the data file in which the data column headers 
+            begin. 
+        sep = str
+            Delimiter type. Default is tab-delimited.
+
+        Attributes:
+        -----------
+        path : str
+            Path to subject folder/directory.
+        id : str
+            Subject id as defined as the last folder by the path.
+        files : list
+            List of file names containing data for each trial.
+        data_list : list
+            List of DataFile objects for each trial.
+        """
+
+        self.path = path
+        self.id = os.path.basename(os.path.normpath(path))
+        self.files = [i for i in os.listdir(self.path) if i.endswith('.dat')]
         # read in list of data file objects
-        self.data_file_list = [DataFile(os.path.join(self.data_path, i), data_start) 
+        self.data_list = [DataFile(os.path.join(self.path, i), data_start) 
                                for i in self.files]
         
     def select_trials(self, header, value):
         """Identify trials based on a value in the file headers and return list
         of objects of only those trials. Important that value is a string."""
-        return [i for i in self.data_file_list if i.headers[header] == value]
+        return [i for i in self.data_list if i.headers[header] == value]
 
     def combine_all(self, reset_index=True):
         """Concatenates all loaded data into a single DataFrame"""
-        self.data = pd.concat([i.data for i in self.data_file_list], 
+        self.data = pd.concat([i.data for i in self.data_list], 
                                ignore_index=reset_index)
 
     def combine_subset(self, subset, reset_index=True):
@@ -70,9 +119,9 @@ class SubjectData:
         """Get header value from every trial"""
         
         if index is None:
-            data = self.data_file_list
+            data = self.data_list
         else:
-            data = self.data_file_list[index]
+            data = self.data_list[index]
         
         list_ = []
         for i in data:
