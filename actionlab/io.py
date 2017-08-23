@@ -33,7 +33,7 @@ def get_data_start(fn, verify_with='HeaderLines', add=1, sep='\t'):
         line in which the data appears rather than the headers stop (default is
         1, which is most common for data files).
     sep : str
-        Delimiter for data file (default is '\t').
+        Delimiter type. Default is tab-delimited.
 
     Returns:
     --------
@@ -73,9 +73,10 @@ class DataFile:
             File name/path.
         sep : str
             Delimiter type. Default is tab-delimited.
-        data_start : int
+        data_start : int, optional
             Line number in the data file in which the data column headers 
-            begin. 
+            begin. If None, the line number is inferred from the first line of 
+            the file (default is None).  
         data_start_verify : str
             Identifier to verify that the first line refers to the number of
             header lines (default is 'HeaderLines', which is standard for data
@@ -113,7 +114,8 @@ class DataFile:
                                 skiprows=self.data_start - 2)
         
 class SubjectData:
-    def __init__(self, path, data_start=None, sep='\t'):
+    def __init__(self, path, sep='\t', data_start=None,
+                 data_start_verify='HeaderLines', data_start_add=1):
         """ Class containing all trial data belonging to a single subject. 
 
         Main class that assembles all of a subject's data, with variety of 
@@ -126,11 +128,20 @@ class SubjectData:
         -----------
         path : str
             Path to subject folder/directory.
-        data_start : int
-            Line number in the data file in which the data column headers 
-            begin. 
         sep = str
             Delimiter type. Default is tab-delimited.
+        data_start : int, optional
+            Line number in the data file in which the data column headers 
+            begin. If None, the line number is inferred from the first line of 
+            the file (default is None). 
+        data_start_verify : str
+            Identifier to verify that the first line refers to the number of
+            header lines (default is 'HeaderLines', which is standard for data
+            files).
+        data_start_add : int
+            Number of lines/rows to add to header lines so that it refers to
+            the line in which the data appears rather than the headers stop 
+            (default is 1, which is most common for data files).
 
         Attributes:
         -----------
@@ -147,13 +158,17 @@ class SubjectData:
         self.path = path
         self.id = os.path.basename(os.path.normpath(path))
         self.files = [i for i in os.listdir(self.path) if i.endswith('.dat')]
-
-        if 
-
+        self.data_start = data_start
 
         # read in list of data file objects
-        self.data_list = [DataFile(os.path.join(self.path, i), data_start) 
-                               for i in self.files]
+        self.data_list = [DataFile(
+                              os.path.join(self.path, i),
+                              sep=sep,
+                              data_start=self.data_start,
+                              data_start_verify=data_start_verify,
+                              data_start_add=data_start_add
+                          ) 
+                          for i in self.files]
         
     def select_trials(self, header, value):
         """Identify trials based on a value in the file headers and return list
