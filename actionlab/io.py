@@ -58,7 +58,8 @@ def get_data_start(fn, verify_with='HeaderLines', add=1, sep='\t'):
     return lines + add
 
 class DataFile:
-    def __init__(self, fn, data_start, sep='\t'):
+    def __init__(self, fn, sep='\t', data_start=None,
+                 data_start_verify='HeaderLines', data_start_add=1):
         """ Handles single-trial data from a single .dat file.
 
         Note that the headers attribute is a Series containing all strings by
@@ -70,11 +71,19 @@ class DataFile:
         -----------
         fn : str
             File name/path.
+        sep : str
+            Delimiter type. Default is tab-delimited.
         data_start : int
             Line number in the data file in which the data column headers 
             begin. 
-        sep = str
-            Delimiter type. Default is tab-delimited.
+        data_start_verify : str
+            Identifier to verify that the first line refers to the number of
+            header lines (default is 'HeaderLines', which is standard for data
+            files).
+        data_start_add : int
+            Number of lines/rows to add to header lines so that it refers to
+            the line in which the data appears rather than the headers stop 
+            (default is 1, which is most common for data files).
 
         Attributes:
         -----------
@@ -84,15 +93,24 @@ class DataFile:
             Pandas DataFrame containing time-varying trial data. 
         """
 
-        # make correction
-        header_rows = data_start - 4 
+        self.file_name = fn
+        self.data_start = data_start
+
+        if self.data_start is None:
+            # infer data start number from file
+            self.data_start = get_data_start(self.file_name, data_start_verify,
+                                             data_start_add, sep=sep)
+
+        # make correction (TODO: find way to infer this)
+        header_rows = self.data_start - 4 
         # drop excess column almost all filled with NANs
-        headers = (pd.read_table(fn, sep='\t', nrows=header_rows))
+        headers = (pd.read_table(self.file_name, sep='\t', nrows=header_rows))
         # remove any duplicate indices
         headers = headers.drop(headers.columns[1], axis=1).squeeze()
         self.headers = headers[~headers.index.duplicated(keep='first')]
 
-        self.data = pd.read_csv(fn, sep=sep, skiprows=data_start - 2)
+        self.data = pd.read_csv(self.file_name, sep=sep, 
+                                skiprows=self.data_start - 2)
         
 class SubjectData:
     def __init__(self, path, data_start=None, sep='\t'):
