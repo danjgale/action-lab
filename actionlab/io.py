@@ -1,12 +1,13 @@
-"""Project utility functions and classes"""
+"""Classes to handled data IO at a single trial level and a single subject
+level
+"""
 
 import os
 import sys
 import numpy as np
 import pandas as pd
 
-__all__ = ['get_trial', 'DataFile', 'SubjectData']
-### General functions
+### helper functions
 
 def get_trial(df, block, trial_number, block_col='BlockNumber', 
               trial_col='TrialNumber'):
