@@ -84,18 +84,18 @@ class Preprocessor:
         # -----------
 
         # setup subject's data folder
-        self._sub_output_dir = os.path.join(
-            config.data_sink_dir,
-            config.sub_id
+        self.__sub_output_dir = os.path.join(
+            self.datasink_dir,
+            self.sub_id
         )
 
-        if not os.path.exists(self._sub_output_dir):
-            os.makedirs(self._sub_output_dir)
+        if not os.path.exists(self.__sub_output_dir):
+            os.makedirs(self.__sub_output_dir)
 
         self.datasink = Node(
             DataSink(
                 base_dir=self.datasink_dir,
-                container=self._sub_output_dir,
+                container=self.__sub_output_dir,
                 substitutions=[('_subject_id_', ''), ('sub_id_', '')],
                 parameterization=self.parameterize_output
             ),
@@ -108,7 +108,7 @@ class Preprocessor:
 
         self.motion_ref = Node(
             fsl.utils.ExtractROI(
-                t_min=config.motion_ref_volume,
+                t_min=self.motion_ref_volume,
                 t_size=1
             ),
             name='motion_ref'
