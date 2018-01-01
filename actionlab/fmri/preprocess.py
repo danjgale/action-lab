@@ -16,12 +16,13 @@ from nipype.interfaces.utility import IdentityInterface, Function
 from nipype.algorithms.misc import Gunzip
 
 
-class Preprocess:
+class Preprocessor:
 
-    def __init__(self, sub_id, functionals, working_dir, datasink_dir,
+    def __init__(self, sub_id, data_dir, functionals, working_dir, datasink_dir,
                  anatomical='*CNS_SAG_MPRAGE_*.nii.gz'):
 
         self.sub_id = sub_id
+        self.data_dir = os.path.abspath(data_dir)
         self.functionals = functionals
         self.working_dir = os.path.abspath(working_dir)
         self.datasink_dir = os.path.abspath(datasink_dir)
@@ -64,16 +65,16 @@ class Preprocess:
             name='infosource'
         )
         self.infosource.inputs.sub_id = self.sub_id
-        self.infosource.inputs.sub_id = self.anatomical
-        self.infosource.inputs.sub_id = self.functionals[0]
+        self.infosource.inputs.anatomical = self.anatomical
+        self.infosource.inputs.first_funct = self.functionals[0]
         self.infosource.iterables = [('functionals', self.functionals)]
 
 
         self.select_files = Node(
             SelectFiles(
-                {'funct': '{data_dir}/{sub_id}/{functionals}',
-                'anat': '{data_dir}/{sub_id}/{anatomical}',
-                'first_funct': '{data_dir}/{sub_id}/{first_funct}'},
+                {'funct': os.path.join(self.data_dir, '{sub_id}/{functionals}'),
+                 'anat': os.path.join(self.data_dir, '{sub_id}/{anatomical}'),
+                 'first_funct': os.path.join(self.data_dir, '{sub_id}/{first_funct}')},
                 name='select_files'
             )
         )
