@@ -47,6 +47,7 @@ def _scan_subject(path, file_pattern=None, use_moco=True):
                 if not is_motion_corrected(os.path.join(path, i))]
     return runs
 
+
 def get_volumes(fn):
     """Return number of volumes in nifti"""
     return int(subprocess.check_output(['fslnvols', fn]))
@@ -74,6 +75,7 @@ def _filter_runs(data_path, run_list, vols):
     print("n runs: {}".format(len(list_)))
     return list_
 
+
 def get_run_time(fn, as_nifti=True):
 
     with open(fn) as f:
@@ -86,6 +88,7 @@ def get_run_time(fn, as_nifti=True):
 
     return fn, metadata['AcquisitionTime'], time
 
+
 def _sort_run_times(x, show_time=True):
     ordered_runs = sorted(x, key=lambda x: x[2])
 
@@ -94,26 +97,28 @@ def _sort_run_times(x, show_time=True):
     else:
         return [i[0] for i in ordered_runs]
 
+
 class RunManager:
 
-    def __init__(self, subjects, data_dir, n_vols, , use_moco=True):
+    def __init__(self, subjects, data_dir, n_vols, use_moco=True,
+                 file_pattern=None):
 
         if isinstance(subjects, str):
             subjects = [subjects]
 
-        self.subject = subjects
+        self.subjects = subjects
         self.subject_dirs = []
 
         self.n_vols = n_vols
         self.use_moco = use_moco
+        self.file_pattern = file_pattern
 
-
-    def gather(self, file_pattern=None):
+    def gather(self):
 
         self.subject_runs = {}
-        for i in self.subject:
+        for i in self.subjects:
             subject_dir = os.path.join(self.data_dir, i)
-            runs = _scan_subject(subject_dir, file_pattern, self.use_moco)
+            runs = _scan_subject(subject_dir, self.file_pattern, self.use_moco)
             runs = _filter_runs(subject_dir, runs, self.n_vols)
 
             self.subject_runs[i] = [os.path.join(subject_dir, j) for j in runs]
