@@ -213,3 +213,11 @@ class SubjectData:
             list_ = list(map(dtype, list_))
 
         return list_
+
+## Misc functions
+
+def convert_file(fn, current, replace):
+    """ Replace file extension with another extension"""
+    if fn.endswith(current):
+        fn = fn[:-len(current)] + replace
+    return fn
