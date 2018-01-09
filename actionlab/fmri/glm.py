@@ -55,18 +55,21 @@ def bunch_protocols(protocol, nruns, condition_col):
 
 class GLM:
 
-    def __init__(self, sub_id, data_dir, working_dir, datasink_dir, functionals,
-                 realign_params):
+    def __init__(self, sub_id, data_dir, output_dir, functionals, realign_params):
 
         self.sub_id = sub_id
         self.data_dir = data_dir
-        self.working_dir = working_dir
-        self.datasink_dir = datasink_dir
+        self.__working_dir = os.path.abspath(
+            os.path.join(self.output_dir, 'working')
+        )
+        self.__datasink_dir = os.path.abspath(
+            os.path.join(self.output_dir, 'output')
+        )
         self.functionals = functionals
         self.realign_params = realign_params
 
     def build(self, protocol_file, contrasts, runs, parameterize_output=False,
-              datasink_dir=None):
+              output_dir=None):
 
         # note that this concatenates runs, so for a typical experiment in which
         # all runs have the same conditions but in different orders, you input
@@ -79,9 +82,15 @@ class GLM:
         self.runs = runs
         self.parameterize_output = parameterize_output
 
-        if datasink_dir is not None:
+        if output_dir is not None:
             # update data sink directory for a specific build
-            self.datasink_dir = datasink_dir
+            self.__datasink_dir = os.path.abspath(
+                os.path.join(output_dir, 'output')
+            )
+
+            self.__working_dir = os.path.abspath(
+                os.path.join(output_dir, 'working')
+            )
 
         # ----------
         # Data Input
@@ -109,7 +118,7 @@ class GLM:
 
         # setup subject's data folder
         self.__sub_output_dir = os.path.join(
-            self.datasink_dir
+            self.__datasink_dir
             self.sub_id
         )
 
@@ -118,7 +127,7 @@ class GLM:
 
         self.datasink = Node(
             DataSink(
-                base_dir=self.datasink_dir,
+                base_dir=self.__datasink_dir,
                 container=self.__sub_output_dir,
                 substitutions=[('_subject_id_', ''), ('sub_id_', '')],
                 parameterization=self.parameterize_output
@@ -166,7 +175,7 @@ class GLM:
 
 
         self.workflow=Workflow(name = 'glm')
-        self.workflow.base_dir=self.working_dir
+        self.workflow.base_dir = self.__working_dir
 
         # intra-modelling flow
         self.workflow.connect([
