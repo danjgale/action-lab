@@ -39,20 +39,30 @@ def _concat_transforms(node_name):
 
 class Normalizer:
 
-    def __init__(self, sub_id, data_dir, working_dir, datasink_dir,
-                 t1, t2_ref, t2_files, t2_files_dir, standard=None):
+    def __init__(self, sub_id, data_dir, output_dir,
+                 t1, t2, t2_ref, standard=None):
 
         self.sub_id = sub_id
         self.data_dir = os.path.abspath(data_dir)
-        self.datasink_dir = os.path.abspath(datasink_dir)
-        self.working_dir = os.path.abspath(working_dir)
+
+        self.output_dir = os.path.join(self.data_dir, output_dir)
+        self.__working_dir = os.path.abspath(
+            os.path.join(self.output_dir, 'working')
+        )
+        self.__datasink_dir = os.path.abspath(
+            os.path.join(self.output_dir, 'output')
+        )
 
         # typically ends with *CNS_SAG_MPRAGE_*.nii.gz
         self.t1 = os.path.abspath(t1)
-
         self.t2_ref = os.path.abspath(t2_ref)
-        self.t2_files_dir = os.path.abspath(t2_files_dir)
-        self.t2_files = t2_files
+
+        if isinstance(t2, str):
+            self.t2 = [os.path.join(os.path.abspath(t2), i)
+                       for i in os.listdir(t2) if 'nii' in i]
+        else:
+            # assume as list (to be specified in docs)
+            self.t2 = t2
 
         if standard is None:
             # default to MNI
@@ -60,13 +70,16 @@ class Normalizer:
         else:
             self.standard = standard
 
+        return self
+
+
     def build(self, parameterize_output=False):
 
         self.parameterize_output = parameterize_output
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
         self.workflow = Workflow(name='normalize')
-        self.workflow.base_dir = self.working_dir
+        self.workflow.base_dir = self.__working_dir
 
         # ----------
         # Data Input
@@ -78,13 +91,13 @@ class Normalizer:
             ),
             name='infosource'
         )
-        self.infosource.iterables = [('t2_files', self.t2_files)]
+        self.infosource.iterables = [('t2_files', self.t2)]
 
         self.select_files = Node(
             SelectFiles(
                 {'t1': self.t1,
                  't2_ref': self.t2_ref
-                 't2_files': os.path.join(self.t2_files_dir, '{t2_files}'),
+                 't2_files': '{t2_files}',
                  'standard': self.standard},
                 name='select_files'
             )
@@ -96,7 +109,7 @@ class Normalizer:
 
         # setup subject's data folder
         self.__sub_output_dir = os.path.join(
-            self.datasink_dir
+            self.__datasink_dir
             self.sub_id
         )
 
@@ -105,7 +118,7 @@ class Normalizer:
 
         self.datasink = Node(
             DataSink(
-                base_dir=self.datasink_dir,
+                base_dir=self.__datasink_dir,
                 container=self.__sub_output_dir,
                 substitutions=[('_subject_id_', ''), ('sub_id_', '')],
                 parameterization=self.parameterize_output
@@ -195,6 +208,9 @@ class Normalizer:
             ])
         ])
 
+        return self
+
+
     def run(self, parallel=True, print_header=True, n_procs=8):
 
         if print_header:
@@ -204,3 +220,5 @@ class Normalizer:
             self.workflow.run('MultiProc', plugin_args={'n_procs': n_procs})
         else:
             self.workflow.run()
+
+        return self

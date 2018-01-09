@@ -18,15 +18,23 @@ from nipype.algorithms.misc import Gunzip
 
 class Preprocessor:
 
-    def __init__(self, sub_id, data_dir, functionals, working_dir, datasink_dir,
+    def __init__(self, sub_id, data_dir, functionals, output_dir,
                  anatomical='*CNS_SAG_MPRAGE_*.nii.gz'):
 
         self.sub_id = sub_id
         self.data_dir = os.path.abspath(data_dir)
         self.functionals = functionals
-        self.working_dir = os.path.abspath(working_dir)
-        self.datasink_dir = os.path.abspath(datasink_dir)
+
+        self.output_dir = os.path.abspath(output_dir)
+        self.__working_dir = os.path.abspath(
+            os.path.join(self.output_dir, 'working')
+        )
+        self.__datasink_dir = os.path.abspath(
+            os.path.join(self.output_dir, 'output')
+        )
         self.anatomical = anatomical
+
+        return self
 
     @staticmethod
     def _get_motion_params(plot_type, name='motion_plot'):
@@ -51,7 +59,7 @@ class Preprocessor:
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
         self.workflow = Workflow(name='preprocessing')
-        self.workflow.base_dir = self.working_dir
+        self.workflow.base_dir = self.__working_dir
 
         # ----------
         # Data Input
@@ -85,7 +93,7 @@ class Preprocessor:
 
         # setup subject's data folder
         self.__sub_output_dir = os.path.join(
-            self.datasink_dir,
+            self.__datasink_dir,
             self.sub_id
         )
 
@@ -94,7 +102,7 @@ class Preprocessor:
 
         self.datasink = Node(
             DataSink(
-                base_dir=self.datasink_dir,
+                base_dir=self.__datasink_dir,
                 container=self.__sub_output_dir,
                 substitutions=[('_subject_id_', ''), ('sub_id_', '')],
                 parameterization=self.parameterize_output
@@ -236,6 +244,8 @@ class Preprocessor:
             (self.smooth, self.datasink, self.smooth_to_datasink)
         ])
 
+        return self
+
     def run(self, parallel=True, print_header=True, n_procs=8):
 
         if print_header:
@@ -245,3 +255,5 @@ class Preprocessor:
             self.workflow.run('MultiProc', plugin_args={'n_procs': n_procs})
         else:
             self.workflow.run()
+
+        return self
