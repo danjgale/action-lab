@@ -90,6 +90,7 @@ def get_run_time(fn, as_nifti=True):
 
 
 def _sort_run_times(x, show_time=True):
+    """Sort runs based on acquisition times"""
     ordered_runs = sorted(x, key=lambda x: x[2])
 
     if show_time:
@@ -113,8 +114,11 @@ class RunManager:
         self.use_moco = use_moco
         self.file_pattern = file_pattern
 
+        return self
+
     def gather(self):
 
+        # dictionary containing list of nifti filenames for each subject
         self.subject_runs = {}
         for i in self.subjects:
             subject_dir = os.path.join(self.data_dir, i)
@@ -122,6 +126,8 @@ class RunManager:
             runs = _filter_runs(subject_dir, runs, self.n_vols)
 
             self.subject_runs[i] = [os.path.join(subject_dir, j) for j in runs]
+
+        return self
 
 
     def sort(self):
@@ -131,7 +137,31 @@ class RunManager:
             run_times = [get_run_time(i) for i in json_files]
             self.subject_runs[k] = _sort_run_times(run_times, show_time=False)
 
+        return self
 
-    def export(self, fn):
+    def get_numbers(self, pattern=r'Vols\d+.nii'):
+
+        self.subject_run_numbers = {}
+        for k, v in self.subjects_runs:
+
+            # extract run number out of pattern the number for
+            # each run
+            run_nums = [
+                int(list(filter(str.isdigit, re.search(pattern, i).group())))
+                for i in v
+            ]
+
+            self.subject_run_numbers[k] = run_nums
+
+
+    def export(self, fn, as_numbers=False):
+
+        if as_numbers:
+            write_obj = self.subject_run_numbers
+        else:
+            write_obj = self.subject_runs
+
         with open(fn, 'w') as f:
             f.write(json.dumps(self.subject_runs, indent=2))
+
+        return self
