@@ -55,7 +55,7 @@ def bunch_protocols(protocol, nruns, condition_col):
 
 class GLM:
 
-    def __init__(self, sub_id, data_dir, output_dir, functionals, realign_params):
+    def __init__(self, sub_id, data_dir, output_dir):
 
         self.sub_id = sub_id
         self.data_dir = data_dir
@@ -65,10 +65,12 @@ class GLM:
         self.__datasink_dir = os.path.abspath(
             os.path.join(self.output_dir, 'output')
         )
-        self.functionals = functionals
-        self.realign_params = realign_params
 
-    def build(self, protocol_file, contrasts, runs, parameterize_output=False,
+        return self
+
+
+    def build(self, protocol_file, contrasts, runs, run_template,
+              realign_template, parameterize_output=False,
               output_dir=None):
 
         # note that this concatenates runs, so for a typical experiment in which
@@ -79,6 +81,9 @@ class GLM:
         # build sets workflow for individual runs (with different protocols)
         self.protocol_file = protocol_file
         self.contrasts = contrasts
+        self.run_template = run_template
+        self.realign_params = realign_params
+        self.realign_template = realign_template
         self.runs = runs
         self.parameterize_output = parameterize_output
 
@@ -92,22 +97,28 @@ class GLM:
                 os.path.join(output_dir, 'working')
             )
 
+
+        self.__input_runs = [run_template.format(run=i) for i in self.runs]
+        self.__realign = [run_template.format(run=i) for i in self.runs]
+
+
         # ----------
         # Data Input
         # ----------
 
         self.infosource = Node(
             IdentityInterface(
-                fields=['selected_runs']
+                fields=['selected_runs', 'realign_params']
             ),
             name='infosource'
         )
-        self.infosource.selected_runs = self.runs
+        self.infosource.selected_runs = self.__input_runs
+        self.infosource.realign_params = self.__realign
 
         self.select_files = Node(
             SelectFiles(
-                {'runs': self.functionals),
-                 'realignment_parameters': self.realign_params},
+                {'runs': '{selected_runs}'),
+                 'realignment_parameters': '{realign_params}'},
                 name='select_files'
             )
         )
@@ -191,7 +202,8 @@ class GLM:
         # input and output flow
         self.workflow.connect([
             (self.infosource, self.select_files, [
-                ('run_num', 'run_num')
+                ('selected_runs', 'selected_runs'),
+                ('realign_params', 'realign_params')
             ]),
             (self.select_files, self.model_spec, [
                 ('runs', 'functional_runs'),
@@ -210,6 +222,8 @@ class GLM:
             ])
         ])
 
+        return self
+
     def run(self, parallel=True, print_header=True, n_procs=8):
 
         if print_header:
@@ -219,3 +233,5 @@ class GLM:
             self.workflow.run('MultiProc', plugin_args = {'n_procs': n_procs})
         else:
             self.workflow.run()
+
+        return self
