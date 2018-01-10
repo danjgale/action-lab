@@ -139,7 +139,7 @@ class RunManager:
 
         return self
 
-    def get_numbers(self, pattern=r'Vols\d+.nii'):
+    def get_run_numbers(self, pattern=r'Vols\d+.nii'):
 
         self.subject_run_numbers = {}
         for k, v in self.subjects_runs:
