@@ -50,6 +50,8 @@ class ProtocolManager:
             i[self.onset_col] = (i[self.onset_col] * 2) - 2
             i[self.duration_col] = self.duration_col * 2
 
+        return self
+
 
     def combine(self):
 
