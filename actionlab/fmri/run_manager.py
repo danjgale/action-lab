@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 sys.path.append('../')
-from utils import convert_file
+from ..utils import convert_file
 
 def is_motion_corrected(fn):
 
@@ -36,7 +36,7 @@ def _scan_subject(path, file_pattern=None, use_moco=True):
         # file/string must be json and contain "Retinotopy"
         json_files = [
             i for i in os.listdir(path)
-            if i.endswith('.json'))
+            if i.endswith('.json')
         ]
 
     if use_moco:
@@ -84,7 +84,7 @@ def get_run_time(fn, as_nifti=True):
     time = datetime.strptime(metadata['AcquisitionTime'], '%H:%M:%S.%f')
 
     if as_nifti:
-        fn = convert_file(fn, '.json', 'nii.gz')
+        fn = convert_file(fn, '.json', '.nii.gz')
 
     return fn, metadata['AcquisitionTime'], time
 
@@ -109,59 +109,82 @@ class RunManager:
 
         self.subjects = subjects
         self.subject_dirs = []
+        self.data_dir = data_dir
 
         self.n_vols = n_vols
         self.use_moco = use_moco
         self.file_pattern = file_pattern
 
-        return self
+        
 
     def gather(self):
 
         # dictionary containing list of nifti filenames for each subject
-        self.subject_runs = {}
+        self.full_path_runs = {}
+        self.runs = {}
         for i in self.subjects:
             subject_dir = os.path.join(self.data_dir, i)
             runs = _scan_subject(subject_dir, self.file_pattern, self.use_moco)
             runs = _filter_runs(subject_dir, runs, self.n_vols)
 
-            self.subject_runs[i] = [os.path.join(subject_dir, j) for j in runs]
+
+            self.runs[i] = runs
+            self.full_path_runs[i] = [os.path.join(subject_dir, j) for j in runs]
 
         return self
 
 
     def sort(self):
 
-        for k, v in self.subject_runs.items():
+        for k, v in self.full_path_runs.items():
             json_files = [convert_file(i, '.nii.gz', '.json') for i in v]
             run_times = [get_run_time(i) for i in json_files]
-            self.subject_runs[k] = _sort_run_times(run_times, show_time=False)
+            self.full_path_runs[k] = _sort_run_times(run_times, show_time=False)
+
+            # cant sort original self.runs because they don't have a path
+            self.runs[k] = [os.path.basename(i) for i in self.full_path_runs[k]]
 
         return self
 
     def get_run_numbers(self, pattern=r'Vols\d+.nii'):
 
         self.subject_run_numbers = {}
-        for k, v in self.subjects_runs:
+        for k, v in self.full_path_runs.items():
 
             # extract run number out of pattern the number for
-            # each run
-            run_nums = [
-                int(list(filter(str.isdigit, re.search(pattern, i).group())))
-                for i in v
-            ]
+            # each run (must join each digit in list into a 
+            # single string after filtering/list)
+            try:
+                run_nums = [
+                    int(''.join(
+                      list(filter(str.isdigit, re.search(pattern, i).group())))
+                    )
+                    for i in v
+                ]
+            except AttributeError:
+                raise ValueError('Could not find match from pattern. Ensure that pattern is found in all functional run filenames')
 
             self.subject_run_numbers[k] = run_nums
 
+        return self
 
-    def export(self, fn, as_numbers=False):
+
+    def export(self, fn, as_numbers=False, full_path=False):
 
         if as_numbers:
+
+            if not hasattr(self, 'subject_run_numbers'):
+                raise AttributeError("'RunManager' object has no attribute 'subject_run_numbers'. Use get_run_numbers() prior to export().")
+
             write_obj = self.subject_run_numbers
         else:
-            write_obj = self.subject_runs
+
+            if full_path:
+                write_obj = self.full_path_runs
+            else:
+                write_obj = self.runs
 
         with open(fn, 'w') as f:
-            f.write(json.dumps(self.subject_runs, indent=2))
+            f.write(json.dumps(write_obj, indent=2))
 
         return self
