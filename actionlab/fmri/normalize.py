@@ -9,7 +9,6 @@ from nipype.pipeline.engine import Workflow, Node, MapNode
 from nipype.interfaces.io import SelectFiles, DataSink
 from nipype.interfaces import fsl, spm
 from nipype.interfaces.utility import IdentityInterface, Function
-from utils import set_datasink
 
 
 def _get_transform(node_name, dof=12, bins=None):
@@ -43,34 +42,33 @@ class Normalizer:
                  t1, t2, t2_ref, standard=None):
 
         self.sub_id = sub_id
-        self.data_dir = os.path.abspath(data_dir)
+        self.data_dir = data_dir
 
-        self.output_dir = os.path.join(self.data_dir, output_dir)
-        self.__working_dir = os.path.abspath(
-            os.path.join(self.output_dir, 'working')
-        )
-        self.__datasink_dir = os.path.abspath(
-            os.path.join(self.output_dir, 'output')
-        )
+        self.output_dir = output_dir
+        self.__working_dir = os.path.join(self.output_dir, 'working')
+        self.__datasink_dir = os.path.join(self.output_dir, 'output')
+        
 
         # typically ends with *CNS_SAG_MPRAGE_*.nii.gz
-        self.t1 = os.path.abspath(t1)
-        self.t2_ref = os.path.abspath(t2_ref)
+        self.t1 = t1
+        self.t2_ref = t2_ref
 
         if isinstance(t2, str):
-            self.t2 = [os.path.join(os.path.abspath(t2), i)
-                       for i in os.listdir(t2) if 'nii' in i]
+            self.t2 = [os.path.join(os.path.join(t2), i)
+                       for i in os.listdir(os.path.join(self.data_dir, self.sub_id, t2)) 
+                       if 'nii' in i]
         else:
             # assume as list (to be specified in docs)
             self.t2 = t2
 
         if standard is None:
             # default to MNI
-            self.standard = '../../resources/MNI152_T1_2mm_brain.nii'
+            module_path = os.path.dirname(__file__)
+            self.standard = os.path.join(module_path, '../../resources/MNI152_T1_2mm_brain.nii')
         else:
             self.standard = standard
 
-        return self
+        
 
 
     def build(self, parameterize_output=False):
@@ -95,12 +93,12 @@ class Normalizer:
 
         self.select_files = Node(
             SelectFiles(
-                {'t1': self.t1,
-                 't2_ref': self.t2_ref
-                 't2_files': '{t2_files}',
-                 'standard': self.standard},
-                name='select_files'
-            )
+                {'t1': os.path.join(self.data_dir, self.sub_id, self.t1),
+                 't2_ref': os.path.join(self.data_dir, self.sub_id, self.t2_ref),
+                 't2_files': os.path.join(self.data_dir, self.sub_id, '{t2_files}'),
+                 'standard': self.standard}
+            ),
+            name='select_files'
         )
 
         # -----------
@@ -109,7 +107,7 @@ class Normalizer:
 
         # setup subject's data folder
         self.__sub_output_dir = os.path.join(
-            self.__datasink_dir
+            self.__datasink_dir,
             self.sub_id
         )
 
@@ -118,7 +116,7 @@ class Normalizer:
 
         self.datasink = Node(
             DataSink(
-                base_dir=self.__datasink_dir,
+                base_directory=self.__datasink_dir,
                 container=self.__sub_output_dir,
                 substitutions=[('_subject_id_', ''), ('sub_id_', '')],
                 parameterization=self.parameterize_output
@@ -170,8 +168,8 @@ class Normalizer:
                 ('t2_ref', 'in_file')
             ]),
             (self.select_files, self.coregister, [
-                ('t1', 'reference'),
-                ('t2_files', 'in_file')
+               ('t1', 'reference'),
+                ('t2_ref', 'in_file')
             ]),
 
             (self.select_files, self.anat_transform, [
