@@ -19,22 +19,26 @@ from nipype.algorithms.misc import Gunzip
 class Preprocessor:
 
     def __init__(self, sub_id, data_dir, functionals, output_dir,
-                 anatomical='*CNS_SAG_MPRAGE_*.nii.gz'):
+                 anatomical='*CNS_SAG_MPRAGE_*.nii.gz', 
+                 prepend_functional_path=None):
 
         self.sub_id = sub_id
-        self.data_dir = os.path.abspath(data_dir)
-        self.functionals = functionals
+        self.data_dir = data_dir
 
-        self.output_dir = os.path.abspath(output_dir)
-        self.__working_dir = os.path.abspath(
-            os.path.join(self.output_dir, 'working')
-        )
-        self.__datasink_dir = os.path.abspath(
-            os.path.join(self.output_dir, 'output')
-        )
+        if prepend_functional_path is not None:
+            # add prepended path (full path required if not present)
+            self.functionals = [os.path.join(prepend_functional_path, i) for i in functionals]
+        else:
+            # assumes that full path is already there
+            self.functionals = functionals
+
+        self.output_dir = output_dir
+        self.__working_dir =  os.path.join(self.output_dir, 'working')
+        self.__datasink_dir = os.path.join(self.output_dir, 'output')
+
         self.anatomical = anatomical
 
-        return self
+        
 
     @staticmethod
     def _get_motion_params(plot_type, name='motion_plot'):
@@ -42,19 +46,21 @@ class Preprocessor:
             fsl.PlotMotionParams(
                 in_source='fsl',
                 plot_type=plot_type,
-            )
+            ),
             name=name,
             iterfield='in_file'
         )
 
     def build(self, TR, parameterize_output=False, fwhm=5.0,
-              skullstrip_frac=0.5, skullstrip_gradient=0):
+              skullstrip_frac=0.5, skullstrip_gradient=0,
+              motion_ref_volume=4):
 
         self.TR = TR
         self.fwhm = fwhm
-        self.skullstrip_frac = skullstrip_frac,
+        self.skullstrip_frac = skullstrip_frac
         self.skullstrip_gradient = skullstrip_gradient
-        self.parameterize_output = parameterize_output
+        self.parameterize_output = parameterize_output 
+        self.motion_ref_volume = motion_ref_volume
 
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
@@ -69,7 +75,6 @@ class Preprocessor:
             IdentityInterface(
                 fields=['sub_id', 'functionals', 'anatomical', 'first_funct']
             ),
-            iterables=['functionals'],
             name='infosource'
         )
         self.infosource.inputs.sub_id = self.sub_id
@@ -82,9 +87,9 @@ class Preprocessor:
             SelectFiles(
                 {'funct': os.path.join(self.data_dir, '{sub_id}/{functionals}'),
                  'anat': os.path.join(self.data_dir, '{sub_id}/{anatomical}'),
-                 'first_funct': os.path.join(self.data_dir, '{sub_id}/{first_funct}')},
-                name='select_files'
-            )
+                 'first_funct': os.path.join(self.data_dir, '{sub_id}/{first_funct}')}
+            ),
+            name='select_files'
         )
 
         # -----------
@@ -102,7 +107,7 @@ class Preprocessor:
 
         self.datasink = Node(
             DataSink(
-                base_dir=self.__datasink_dir,
+                base_directory=self.__datasink_dir,
                 container=self.__sub_output_dir,
                 substitutions=[('_subject_id_', ''), ('sub_id_', '')],
                 parameterization=self.parameterize_output
@@ -132,8 +137,8 @@ class Preprocessor:
         )
 
         self.plot_disp = self._get_motion_params('displacement', 'disp_plot')
-        self.plot_rotation = self._get_motion_params('rotations', 'rot_plot')
-        self.plot_translation = self._get_motion_params('translations', 'trans_plot')
+        self.plot_rot = self._get_motion_params('rotations', 'rot_plot')
+        self.plot_trans = self._get_motion_params('translations', 'trans_plot')
 
         # ---------------------
         # Slice Time Correction
@@ -170,7 +175,7 @@ class Preprocessor:
                 robust=True,
                 mask=True,
                 frac=self.skullstrip_frac,
-                gradient=self.skullstrip_gradient,
+                vertical_gradient=self.skullstrip_gradient,
             ),
             name='skullstrip'
         )
@@ -188,7 +193,7 @@ class Preprocessor:
         self.slicetime_to_smooth = [('slice_time_corrected_file', 'in_files')]
 
         self.workflow.connect([
-            (self.motion_ref, self.motion, self.motion_ref_to_motion_correction),
+            (self.motion_ref, self.motion_correction, self.motion_ref_to_motion_correction),
             (self.motion_correction, self.slicetime, self.motion_to_slicetime),
             (self.motion_correction, self.plot_disp, self.motion_correction_to_plot),
             (self.motion_correction, self.plot_rot, self.motion_correction_to_plot),
@@ -202,13 +207,13 @@ class Preprocessor:
 
         # make class methods for same reason as above
         self.selectfiles_to_skullstrip = [('anat', 'in_file')]
-        self.selectfiles_to_motion_ref = [('first_run', 'in_file')]
-        self.select_files_to_motion_correction = [('func', 'in_file')]
+        self.selectfiles_to_motion_ref = [('first_funct', 'in_file')]
+        self.select_files_to_motion_correction = [('funct', 'in_file')]
 
         self.motion_ref_to_datasink = [('roi_file', 'motion_corrected.ref')]
         self.skullstrip_to_datasink = [
-            ('out_file', 'structual'),
-            ('mask_file', 'structual.mask')
+            ('out_file', 'anatomical'),
+            ('mask_file', 'anatomical.mask')
         ]
         self.motion_correction_to_datasink = [
             ('out_file', 'motion_corrected'),
@@ -217,16 +222,16 @@ class Preprocessor:
         self.plot_disp_to_datasink = [('out_file', 'motion_corrected.disp_plots')]
         self.plot_rot_to_datasink = [('out_file', 'motion_corrected.rot_plots')]
         self.plot_trans_to_datasink = [('out_file', 'motion_corrected.trans_plots')]
-        self.slicetime_to_datasink = [('slice_time_corrected_file', 'time_corrected')]
+        self.slicetime_to_datasink = [('slice_time_corrected_file', 'slice_time_corrected')]
         self.smooth_to_datasink = [('smoothed_files', 'smoothed')]
 
 
         self.workflow.connect([
             (self.infosource, self.select_files, [
                 ('sub_id', 'sub_id'),
-                ('task_runs', 'task_runs'),
-                ('first_run', 'first_run'),
-                ('rest_runs', 'rest_runs')
+                ('functionals', 'functionals'),
+                ('anatomical', 'anatomical'),
+                ('first_funct', 'first_funct'),
             ]),
             # inputs
             (self.select_files, self.skullstrip, self.selectfiles_to_skullstrip),
@@ -238,8 +243,8 @@ class Preprocessor:
             (self.skullstrip, self.datasink, self.skullstrip_to_datasink),
             (self.motion_correction, self.datasink, self.motion_correction_to_datasink),
             (self.plot_disp, self.datasink, self.plot_disp_to_datasink),
-            (self.plot_translation, self.datasink, self.plot_trans_to_datasink),
-            (self.plot_rotation, self.datasink, self.plot_rot_to_datasink),
+            (self.plot_trans, self.datasink, self.plot_trans_to_datasink),
+            (self.plot_rot, self.datasink, self.plot_rot_to_datasink),
             (self.slicetime, self.datasink, self.slicetime_to_datasink),
             (self.smooth, self.datasink, self.smooth_to_datasink)
         ])
