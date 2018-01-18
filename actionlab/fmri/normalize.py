@@ -13,6 +13,25 @@ from nipype.interfaces.utility import IdentityInterface, Function
 from nilearn.plotting import plot_anat
 
 
+def registration_report(fn, input_volume, target=None, nslices=8,
+                        title=None):
+
+    if target is None:
+        target = '../../resources/MNI152_T1_2mm_brain.nii'
+
+    fig, ax = plt.subplots(3, 1, figsize=(20, 25))
+    ax[0].set_title(title, fontsize=30)
+
+    for i, j in enumerate(['x', 'y', 'z']):
+        plot_anat(
+            input_volume, draw_cross=False, cut_coords=nslices,
+            display_mode=j, axes=ax[i]
+        ).add_edges(target)
+
+    # save off subplot figure into png
+    fig.savefig(fn)
+
+
 def _get_linear_transform(node_name, dof=12, bins=None):
     """ FLIRT node for getting transformation matrix for coregistration"""
     transform = fsl.FLIRT()
@@ -238,31 +257,3 @@ class Normalizer:
             self.workflow.run()
 
         return self
-
-
-class RegistrationReport:
-
-    def __init__(self, anatomical, reference=None):
-        self.anatomical = anatomical
-
-        if reference is None:
-            self.reference = '../../resources/MNI152_T1_2mm_brain.nii'
-        else:
-            self.reference = reference
-
-
-    def plot(self, fn, nslices=8):
-
-        fig, ax = plt.subplots(3, 1, figsize=(20, 25))
-
-        for i, j in enumerate(['x', 'y', 'z']):
-            # iterate over some set of coordiates, each figure is a subplot
-            # that is appended below
-
-            plot_anat(
-                self.anatomical, draw_cross=False, cut_coords=nslices,
-                display_mode=j, axes=ax[i]
-            ).add_edges(self.reference)
-
-        # save off subplot figure into png
-        fig.savefig(fn)
