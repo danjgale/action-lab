@@ -3,15 +3,17 @@
 import os
 import sys
 import numpy as np
+import matplotlib.pyplot as plt
 import nipype
 from nipype import logging
 from nipype.pipeline.engine import Workflow, Node, MapNode
 from nipype.interfaces.io import SelectFiles, DataSink
 from nipype.interfaces import fsl, spm
 from nipype.interfaces.utility import IdentityInterface, Function
+from nilearn.plotting import plot_anat
 
 
-def _get_transform(node_name, dof=12, bins=None):
+def _get_linear_transform(node_name, dof=12, bins=None):
     """ FLIRT node for getting transformation matrix for coregistration"""
     transform = fsl.FLIRT()
     transform.inputs.dof = dof
@@ -23,7 +25,7 @@ def _get_transform(node_name, dof=12, bins=None):
     return Node(transform, name=node_name)
 
 
-def _apply_transform(node_name):
+def _apply_linear_transform(node_name):
     """FLIRT node for apply an existing transform"""
     transform = fsl.FLIRT()
     transform.inputs.apply_xfm = True
@@ -47,7 +49,7 @@ class Normalizer:
         self.output_dir = output_dir
         self.__working_dir = os.path.join(self.output_dir, 'working')
         self.__datasink_dir = os.path.join(self.output_dir, 'output')
-        
+
 
         # typically ends with *CNS_SAG_MPRAGE_*.nii.gz
         self.t1 = t1
@@ -55,7 +57,7 @@ class Normalizer:
 
         if isinstance(t2, str):
             self.t2 = [os.path.join(os.path.join(t2), i)
-                       for i in os.listdir(os.path.join(self.data_dir, self.sub_id, t2)) 
+                       for i in os.listdir(os.path.join(self.data_dir, self.sub_id, t2))
                        if 'nii' in i]
         else:
             # assume as list (to be specified in docs)
@@ -68,12 +70,15 @@ class Normalizer:
         else:
             self.standard = standard
 
-        
 
-
-    def build(self, parameterize_output=False):
+    def build(self, parameterize_output=False, fnirt_fwhm=[6, 4, 2, 2],
+              fnirt_subsampling_scheme=[4, 2, 1, 1],
+              fnirt_warp_resolution=(10, 10, 10)):
 
         self.parameterize_output = parameterize_output
+        self.fnirt_fwhm = fnirt_fwhm
+        self.fnirt_subsampling_scheme = fnirt_subsampling_scheme
+        self.fnirt_warp_resolution = fnirt_warp_resolution
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
         self.workflow = Workflow(name='normalize')
@@ -129,14 +134,27 @@ class Normalizer:
         # -------------------
 
         # nodes only necessary for coregistration
-        self.coregister_transform = _get_transform('coregister_transform')
-        self.coregister = _apply_transform('coregister')
+        self.coregister_transform = _get_linear_transform('coregister_transform')
+        self.coregister = _apply_linear_transform('coregister')
 
-        # extra nodes to complete normalization
-        self.anat_transform = _get_transform('anat_transform')
-        self.normalize_anat = _apply_transform('normalize_anat')
+        # generate affine transformation
+        self.anat_transform = _get_linear_transform('anat_transform')
+        self.normalize_anat = _apply_linear_transform('normalize_anat')
         self.concat = _concat_transforms('concat')
-        self.normalize_func = _apply_transform('normalize_func')
+        # self.normalize_func = _apply_linear_transform('normalize_func')
+
+        # generate nonlinear normalization transform
+        # to be added in workflow: in_file, ref_file, affine_file
+        self.nonlinear_transform = Node(
+            fsl.FNIRT(
+                in_fwhm=self.fnirt_fwhm,
+                subsampling_scheme=self.fnirt_subsampling_scheme,
+                warp_resolution=self.fnirt_warp_resolution
+            )
+        )
+        self.normalize_func
+
+
 
         # -------------------------------
         # Intra-normalization connections
@@ -220,3 +238,31 @@ class Normalizer:
             self.workflow.run()
 
         return self
+
+
+class RegistrationReport:
+
+    def __init__(self, anatomical, reference=None):
+        self.anatomical = anatomical
+
+        if reference is None:
+            self.reference = '../../resources/MNI152_T1_2mm_brain.nii'
+        else:
+            self.reference = reference
+
+
+    def plot(self, fn, nslices=8):
+
+        fig, ax = plt.subplots(3, 1, figsize=(20, 25))
+
+        for i, j in enumerate(['x', 'y', 'z']):
+            # iterate over some set of coordiates, each figure is a subplot
+            # that is appended below
+
+            plot_anat(
+                self.anatomical, draw_cross=False, cut_coords=nslices,
+                display_mode=j, axes=ax[i]
+            ).add_edges(self.reference)
+
+        # save off subplot figure into png
+        fig.savefig(fn)
