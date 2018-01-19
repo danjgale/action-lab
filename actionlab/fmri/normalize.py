@@ -2,6 +2,11 @@
 
 import os
 import sys
+
+if sys.platform == 'linux':
+    import matplotlib
+    matplotlib.use('Agg')
+
 import numpy as np
 import matplotlib.pyplot as plt
 import nipype
@@ -37,7 +42,7 @@ def _registration_report_node(fn, target=None, title=None):
                       output_names=['fn'],
                       function=registration_report)
 
-    report.inputs.fn = fn
+    report.outputs.fn = fn
 
     if target is not None:
         report.target = target
@@ -70,11 +75,6 @@ def _concat_transforms(node_name):
     convert = fsl.ConvertXFM()
     convert.inputs.concat_xfm = True
     return Node(convert, name=node_name)
-
-def _apply_warp():
-
-    convert =
-
 
 
 class Normalizer:
@@ -190,7 +190,8 @@ class Normalizer:
                 subsampling_scheme=self.fnirt_subsampling_scheme,
                 warp_resolution=self.fnirt_warp_resolution,
                 config_file='T1_2_MNI152_2mm' # see if needed/desired
-            )
+            ),
+            name='nonlinear_transform'
         )
 
         self.normalize_func = MapNode(fsl.ApplyWarp(), name='normalize_func',
@@ -200,9 +201,9 @@ class Normalizer:
         # make registration reports (motion_ref to anat, anat to mni,
         # motion_ref to mni)
 
-        t2_t1_report = _registration_report_node('t2_t1_report.png', title='T2w to T1w')
-        t1_mni_report = _registration_report_node('t1_mni_report.png', title='T1w to MNI')
-        t2_mni_report = _registration_report_node('t2_mni_report.png', title='T2w to MNI')
+        t2_t1_report = MapNode(_registration_report_node('t2_t1_report.png', title='T2w to T1w'), name='t2_t1_report', iterfield='in_file')
+        t1_mni_report = Node(_registration_report_node('t1_mni_report.png', title='T1w to MNI'), name='t1_mni_report')
+        #t2_mni_report = Node(_registration_report_node('t2_mni_report.png', title='T2w to MNI'), name='t2_mni_report')
 
         # -------------------------------
         # Intra-normalization connections
@@ -234,9 +235,9 @@ class Normalizer:
             (self.coregister, t2_t1_report, [
                 ('out_file', 'in_file')
             ]),
-            (self.normalize_func, t2_t1_report, [
-                ('out_file', 'in_file')
-            ])
+            #(self.normalize_func, t2_t1_report, [
+            #   ('out_file', 'in_file')
+            #])
 
         ])
 
@@ -271,10 +272,10 @@ class Normalizer:
             ]),
             (self.select_files, t1_mni_report, [
                 ('standard', 'target')
-            ]),
-            (self.select_files, t2_t1_report, [
-                ('standard', 'target')
-            ]),
+            ])
+            #(self.select_files, t2_t1_report, [
+            #    ('standard', 'target')
+            #]),
 
             # output
             (self.coregister, self.datasink, [
@@ -297,10 +298,10 @@ class Normalizer:
             ]),
             (t1_mni_report, self.datasink, [
                 ('fn', 'normalized.reports.@t1')
-            ]),
-            (t2_mni_report, self.datasink, [
-                ('fn', 'normalized.reports.@t2')
             ])
+            #(t2_mni_report, self.datasink, [
+             #   ('fn', 'normalized.reports.@t2')
+            #])
         ])
 
         return self
