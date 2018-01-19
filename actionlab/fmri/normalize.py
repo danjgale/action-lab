@@ -19,7 +19,7 @@ from nilearn.plotting import plot_anat
 
 
 def registration_report(fn, in_file, target=None, nslices=8,
-                        title=None, return_fig=False):
+                        title=None):
 
     if target is None:
         target = '../../resources/MNI152_T1_2mm_brain.nii'
@@ -34,22 +34,7 @@ def registration_report(fn, in_file, target=None, nslices=8,
         ).add_edges(target)
 
     # save off subplot figure into png
-    return fig.savefig(fn)
-
-
-def _registration_report_node(fn, target=None, title=None):
-    report = Function(input_names=['in_file', 'target', 'title'],
-                      output_names=['fn'],
-                      function=registration_report)
-
-    report.outputs.fn = fn
-
-    if target is not None:
-        report.target = target
-
-    report.title = title
-
-    return report
+    fig.savefig(fn)
 
 def _get_linear_transform(node_name, dof=12, bins=None):
     """ FLIRT node for getting transformation matrix for coregistration"""
@@ -109,11 +94,14 @@ class Normalizer:
         else:
             self.standard = standard
 
+        self.__is_nonlinear = None
+
 
     def build_nonlinear(self, parameterize_output=False, fnirt_fwhm=[6, 4, 2, 2],
               fnirt_subsampling_scheme=[4, 2, 1, 1],
               fnirt_warp_resolution=(10, 10, 10)):
 
+        self.__is_nonlinear = True
         self.parameterize_output = parameterize_output
         self.fnirt_fwhm = fnirt_fwhm
         self.fnirt_subsampling_scheme = fnirt_subsampling_scheme
@@ -198,13 +186,6 @@ class Normalizer:
                                       iterfield='in_file')
         self.normalize_anat = Node(fsl.ApplyWarp(), name='normalize_anat')
 
-        # make registration reports (motion_ref to anat, anat to mni,
-        # motion_ref to mni)
-
-        t2_t1_report = MapNode(_registration_report_node('t2_t1_report.png', title='T2w to T1w'), name='t2_t1_report', iterfield='in_file')
-        t1_mni_report = Node(_registration_report_node('t1_mni_report.png', title='T1w to MNI'), name='t1_mni_report')
-        #t2_mni_report = Node(_registration_report_node('t2_mni_report.png', title='T2w to MNI'), name='t2_mni_report')
-
         # -------------------------------
         # Intra-normalization connections
         # -------------------------------
@@ -228,17 +209,7 @@ class Normalizer:
             ]),
             (self.nonlinear_transform, self.normalize_func, [
                 'fieldcoeff_file', 'field_file'
-            ]),
-            (self.normalize_anat, t1_mni_report, [
-                ('out_file', 'in_file')
-            ]),
-            (self.coregister, t2_t1_report, [
-                ('out_file', 'in_file')
-            ]),
-            #(self.normalize_func, t2_t1_report, [
-            #   ('out_file', 'in_file')
-            #])
-
+            ])
         ])
 
         # ---------
@@ -266,16 +237,7 @@ class Normalizer:
             (self.select_files, self.normalize_func, [
                 ('t2_files', 'in_file'),
                 ('standard', 'ref_file')
-            ]),
-            (self.select_files, t2_t1_report, [
-                ('t1', 'target')
-            ]),
-            (self.select_files, t1_mni_report, [
-                ('standard', 'target')
             ])
-            #(self.select_files, t2_t1_report, [
-            #    ('standard', 'target')
-            #]),
 
             # output
             (self.coregister, self.datasink, [
@@ -292,16 +254,7 @@ class Normalizer:
             ]),
             (self.normalize_func, self.datasink, [
                 ('out_file', 'normalized.@func')
-            ]),
-            (t2_t1_report, self.datasink, [
-                ('fn', 'registered.@t2')
-            ]),
-            (t1_mni_report, self.datasink, [
-                ('fn', 'normalized.reports.@t1')
             ])
-            #(t2_mni_report, self.datasink, [
-             #   ('fn', 'normalized.reports.@t2')
-            #])
         ])
 
         return self
@@ -309,6 +262,7 @@ class Normalizer:
 
     def build_linear(self, parameterize_output=False):
 
+        self.__is_nonlinear = False
         self.parameterize_output = parameterize_output
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
@@ -341,7 +295,7 @@ class Normalizer:
         # Data Output
         # -----------
 
-        # setup subject's data folder
+        # setup subject's data folders
         self.__sub_output_dir = os.path.join(
             self.__datasink_dir,
             self.sub_id
@@ -455,3 +409,29 @@ class Normalizer:
             self.workflow.run()
 
         return self
+
+    def make_reports(self):
+
+        self.__report_dir = os.path.join(self.__sub_output_dir, 'reports')
+
+        if not os.path.exists(self.__report_dir):
+            os.makedirs(self.__report_dir)
+
+
+        normed_t2_path = [i for i in os.listdir(
+            os.path.join(self.__sub_output_dir, 'registered')
+            ) if i.endswith('.nii.gz')
+        ]
+
+        t1_path = [i for i in os.listdir(
+            os.path.join(self.__sub_output_dir, 'normalized/anat')
+            ) if i.endswith('nii.gz')
+
+        registration_report(os.path.join(self.__report_dir, 't1_to_mni.png')
+                            t1_path, title='T1w to MNI Normalization')
+        registration_report(os.path.join(self.__report_dir, 't2_to_t1.png'),
+                            normed_t2_path, t1_path, title='Coregistration')
+        registration_report(os.path.join(self.__report_dir, 't2_to_mni.png'),
+                            normed_t2_path, title='T2w to MNI Normalization')
+
+
