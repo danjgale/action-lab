@@ -225,9 +225,19 @@ class Normalizer:
             (self.coregister_transform, self.normalize_func, [
                 'out_matrix_file', 'premat'
             ]),
-            self.nonlinear_transform, self.normalize_func, [
+            (self.nonlinear_transform, self.normalize_func, [
                 'fieldcoeff_file', 'field_file'
-            ],
+            ]),
+            (self.normalize_anat, t1_mni_report, [
+                ('out_file', 'in_file')
+            ]),
+            (self.coregister, t2_t1_report, [
+                ('out_file', 'in_file')
+            ]),
+            (self.normalize_func, t2_t1_report, [
+                ('out_file', 'in_file')
+            ])
+
         ])
 
         # ---------
@@ -256,13 +266,22 @@ class Normalizer:
                 ('t2_files', 'in_file'),
                 ('standard', 'ref_file')
             ]),
+            (self.select_files, t2_t1_report, [
+                ('t1', 'target')
+            ]),
+            (self.select_files, t1_mni_report, [
+                ('standard', 'target')
+            ]),
+            (self.select_files, t2_t1_report, [
+                ('standard', 'target')
+            ]),
 
             # output
             (self.coregister, self.datasink, [
                 ('out_file', 'registered')
             ]),
             (self.coregister_transform, self.datasink, [
-                ('out_matrix_file', 'registered.mat')
+                ('out_matrix_file', 'registered.@mat')
             ]),
             (self.nonlinear_transform, self.datasink, [
                 ('fieldcoeff_file', 'normalized.@field'),
@@ -272,6 +291,15 @@ class Normalizer:
             ]),
             (self.normalize_func, self.datasink, [
                 ('out_file', 'normalized.@func')
+            ]),
+            (t2_t1_report, self.datasink, [
+                ('fn', 'registered.@t2')
+            ]),
+            (t1_mni_report, self.datasink, [
+                ('fn', 'normalized.reports.@t1')
+            ]),
+            (t2_mni_report, self.datasink, [
+                ('fn', 'normalized.reports.@t2')
             ])
         ])
 
