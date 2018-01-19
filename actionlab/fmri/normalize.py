@@ -13,8 +13,8 @@ from nipype.interfaces.utility import IdentityInterface, Function
 from nilearn.plotting import plot_anat
 
 
-def registration_report(fn, input_volume, target=None, nslices=8,
-                        title=None):
+def registration_report(fn, in_file, target=None, nslices=8,
+                        title=None, return_fig=False):
 
     if target is None:
         target = '../../resources/MNI152_T1_2mm_brain.nii'
@@ -24,13 +24,27 @@ def registration_report(fn, input_volume, target=None, nslices=8,
 
     for i, j in enumerate(['x', 'y', 'z']):
         plot_anat(
-            input_volume, draw_cross=False, cut_coords=nslices,
+            in_file, draw_cross=False, cut_coords=nslices,
             display_mode=j, axes=ax[i]
         ).add_edges(target)
 
     # save off subplot figure into png
-    fig.savefig(fn)
+    return fig.savefig(fn)
 
+
+def _registration_report_node(fn, target=None, title=None):
+    report = Function(input_names=['in_file', 'target', 'title'],
+                      output_names=['fn'],
+                      function=registration_report)
+
+    report.inputs.fn = fn
+
+    if target is not None:
+        report.target = target
+
+    report.title = title
+
+    return report
 
 def _get_linear_transform(node_name, dof=12, bins=None):
     """ FLIRT node for getting transformation matrix for coregistration"""
@@ -56,6 +70,12 @@ def _concat_transforms(node_name):
     convert = fsl.ConvertXFM()
     convert.inputs.concat_xfm = True
     return Node(convert, name=node_name)
+
+def _apply_warp():
+
+    convert =
+
+
 
 class Normalizer:
 
@@ -90,7 +110,7 @@ class Normalizer:
             self.standard = standard
 
 
-    def build(self, parameterize_output=False, fnirt_fwhm=[6, 4, 2, 2],
+    def build_nonlinear(self, parameterize_output=False, fnirt_fwhm=[6, 4, 2, 2],
               fnirt_subsampling_scheme=[4, 2, 1, 1],
               fnirt_warp_resolution=(10, 10, 10)):
 
@@ -158,8 +178,8 @@ class Normalizer:
 
         # generate affine transformation
         self.anat_transform = _get_linear_transform('anat_transform')
-        self.normalize_anat = _apply_linear_transform('normalize_anat')
-        self.concat = _concat_transforms('concat')
+        #self.normalize_anat = _apply_linear_transform('normalize_anat')
+        #self.concat = _concat_transforms('concat')
         # self.normalize_func = _apply_linear_transform('normalize_func')
 
         # generate nonlinear normalization transform
@@ -168,12 +188,162 @@ class Normalizer:
             fsl.FNIRT(
                 in_fwhm=self.fnirt_fwhm,
                 subsampling_scheme=self.fnirt_subsampling_scheme,
-                warp_resolution=self.fnirt_warp_resolution
+                warp_resolution=self.fnirt_warp_resolution,
+                config_file='T1_2_MNI152_2mm' # see if needed/desired
             )
         )
-        self.normalize_func
+
+        self.normalize_func = MapNode(fsl.ApplyWarp(), name='normalize_func',
+                                      iterfield='in_file')
+        self.normalize_anat = Node(fsl.ApplyWarp(), name='normalize_anat')
+
+        # make registration reports (motion_ref to anat, anat to mni,
+        # motion_ref to mni)
+
+        t2_t1_report = _registration_report_node('t2_t1_report.png', title='T2w to T1w')
+        t1_mni_report = _registration_report_node('t1_mni_report.png', title='T1w to MNI')
+        t2_mni_report = _registration_report_node('t2_mni_report.png', title='T2w to MNI')
+
+        # -------------------------------
+        # Intra-normalization connections
+        # -------------------------------
+
+        self.workflow.connect([
+            # transform anat to mni
+            (self.anat_transform, self.nonlinear_transform, [
+                'out_matrix_file', 'affine_file'
+            ]),
+            self.nonlinear_transform, self.normalize_anat, [
+                'fieldcoeff_file', 'field_file'
+            ],
+
+            # transform funct to anat
+            (self.coregister_transform, self.coregister, [
+                ('out_matrix_file', 'in_matrix_file')
+            ]),
+            # transform funct to mni
+            (self.coregister_transform, self.normalize_func, [
+                'out_matrix_file', 'premat'
+            ]),
+            self.nonlinear_transform, self.normalize_func, [
+                'fieldcoeff_file', 'field_file'
+            ],
+        ])
+
+        # ---------
+        # Data flow
+        # ---------
+
+        self.workflow.connect([
+            (self.infosource, self.select_files, [('t2_files', 't2_files')]),
+            (self.select_files, self.coregister_transform, [
+                ('t1', 'reference'),
+                ('t2_ref', 'in_file')
+            ]),
+            (self.select_files, self.coregister, [
+               ('t1', 'reference'),
+                ('t2_ref', 'in_file')
+            ]),
+            (self.select_files, self.nonlinear_transform, [
+                ('t1', 'in_file'),
+                ('standard', 'ref_file')
+            ])
+            (self.select_files, self.normalize_anat, [
+                ('t1', 'in_file'),
+                ('standard', 'ref_file')
+            ]),
+            (self.select_files, self.normalize_func, [
+                ('t2_files', 'in_file'),
+                ('standard', 'ref_file')
+            ]),
+
+            # output
+            (self.coregister, self.datasink, [
+                ('out_file', 'registered')
+            ]),
+            (self.coregister_transform, self.datasink, [
+                ('out_matrix_file', 'registered.mat')
+            ]),
+            (self.nonlinear_transform, self.datasink, [
+                ('fieldcoeff_file', 'normalized.@field'),
+            ])
+            (self.normalize_anat, self.datasink, [
+                ('out_file', 'normalized.anat')
+            ]),
+            (self.normalize_func, self.datasink, [
+                ('out_file', 'normalized.@func')
+            ])
+        ])
+
+        return self
 
 
+    def build_linear(self, parameterize_output=False):
+
+        self.parameterize_output = parameterize_output
+
+        nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
+        self.workflow = Workflow(name='normalize')
+        self.workflow.base_dir = self.__working_dir
+
+        # ----------
+        # Data Input
+        # ----------
+
+        self.infosource = Node(
+            IdentityInterface(
+                fields=['t2_files']
+            ),
+            name='infosource'
+        )
+        self.infosource.iterables = [('t2_files', self.t2)]
+
+        self.select_files = Node(
+            SelectFiles(
+                {'t1': os.path.join(self.data_dir, self.sub_id, self.t1),
+                 't2_ref': os.path.join(self.data_dir, self.sub_id, self.t2_ref),
+                 't2_files': os.path.join(self.data_dir, self.sub_id, '{t2_files}'),
+                 'standard': self.standard}
+            ),
+            name='select_files'
+        )
+
+        # -----------
+        # Data Output
+        # -----------
+
+        # setup subject's data folder
+        self.__sub_output_dir = os.path.join(
+            self.__datasink_dir,
+            self.sub_id
+        )
+
+        if not os.path.exists(self.__sub_output_dir):
+            os.makedirs(self.__sub_output_dir)
+
+        self.datasink = Node(
+            DataSink(
+                base_directory=self.__datasink_dir,
+                container=self.__sub_output_dir,
+                substitutions=[('_subject_id_', ''), ('sub_id_', '')],
+                parameterization=self.parameterize_output
+            ),
+            name='datasink'
+        )
+
+        # -------------------
+        # Normalization nodes
+        # -------------------
+
+        # nodes only necessary for coregistration
+        self.coregister_transform = _get_transform('coregister_transform')
+        self.coregister = _apply_transform('coregister')
+
+        # extra nodes to complete normalization
+        self.anat_transform = _get_transform('anat_transform')
+        self.normalize_anat = _apply_transform('normalize_anat')
+        self.concat = _concat_transforms('concat')
+        self.normalize_func = _apply_transform('normalize_func')
 
         # -------------------------------
         # Intra-normalization connections
@@ -244,7 +414,6 @@ class Normalizer:
         ])
 
         return self
-
 
     def run(self, parallel=True, print_header=True, n_procs=8):
 
