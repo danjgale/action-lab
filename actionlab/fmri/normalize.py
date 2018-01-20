@@ -108,41 +108,12 @@ class Normalizer:
         self.fnirt_warp_resolution = fnirt_warp_resolution
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
-        self.workflow = Workflow(name='normalize')
-        self.workflow.base_dir = self.__working_dir
-
-        # ----------
-        # Data Input
-        # ----------
-
-        self.infosource = Node(
-            IdentityInterface(
-                fields=['t2_files']
-            ),
-            name='infosource'
-        )
-        self.infosource.iterables = [('t2_files', self.t2)]
-
-        self.select_files = Node(
-            SelectFiles(
-                {'t1': os.path.join(self.data_dir, self.sub_id, self.t1),
-                 't2_ref': os.path.join(self.data_dir, self.sub_id, self.t2_ref),
-                 't2_files': os.path.join(self.data_dir, self.sub_id, '{t2_files}'),
-                 'standard': self.standard}
-            ),
-            name='select_files'
-        )
-
-        # -----------
-        # Data Output
-        # -----------
 
         # setup subject's data folder
         self.__sub_output_dir = os.path.join(
             self.__datasink_dir,
             self.sub_id
         )
-
         if not os.path.exists(self.__sub_output_dir):
             os.makedirs(self.__sub_output_dir)
 
@@ -156,13 +127,25 @@ class Normalizer:
             name='datasink'
         )
 
-        # -------------------
-        # Normalization nodes
-        # -------------------
+        # ---------------------------------------------------------------------
+        # ANATOMICAL NORMALIZATION SUBFLOW
+        #
+        # Make subflow so that FNIRT only runs once on the anatomical scan,
+        # rather than running once per iteration due to multiple functional
+        # runs
+        # ---------------------------------------------------------------------
 
-        # nodes only necessary for coregistration
-        self.coregister_transform = _get_linear_transform('coregister_transform')
-        self.coregister = _apply_linear_transform('coregister')
+        self.__normalize_anat_workflow = Workflow(name='norm_anat')
+        self.__normalize_anat_workflow.base_dir = self.__working_dir
+
+        self.anat_files = Node(
+            SelectFiles(
+                {'t1': os.path.join(self.data_dir, self.sub_id, self.t1),
+                 'standard': self.standard
+                }
+            )
+            name='anat_files'
+        )
 
         # generate affine transformation
         self.anat_transform = _get_linear_transform('anat_transform')
@@ -182,50 +165,22 @@ class Normalizer:
             name='nonlinear_transform'
         )
 
-        self.normalize_func = MapNode(fsl.ApplyWarp(), name='normalize_func',
-                                      iterfield=['in_file'])
         self.normalize_anat = Node(fsl.ApplyWarp(), name='normalize_anat')
 
-        # -------------------------------
-        # Intra-normalization connections
-        # -------------------------------
 
-        self.workflow.connect([
+        # intra-normalization workflow
+        self.__normalize_anat_workflow.connect([
             # transform anat to mni
             (self.anat_transform, self.nonlinear_transform, [
                 ('out_matrix_file', 'affine_file')
             ]),
             (self.nonlinear_transform, self.normalize_anat, [
                 ('fieldcoeff_file', 'field_file')
-            ]),
-
-            # transform funct to anat
-            (self.coregister_transform, self.coregister, [
-                ('out_matrix_file', 'in_matrix_file')
-            ]),
-            # transform funct to mni
-            (self.coregister_transform, self.normalize_func, [
-                ('out_matrix_file', 'premat')
-            ]),
-            (self.nonlinear_transform, self.normalize_func, [
-                ('fieldcoeff_file', 'field_file')
             ])
         ])
 
-        # ---------
-        # Data flow
-        # ---------
-
-        self.workflow.connect([
-            (self.infosource, self.select_files, [('t2_files', 't2_files')]),
-            (self.select_files, self.coregister_transform, [
-                ('t1', 'reference'),
-                ('t2_ref', 'in_file')
-            ]),
-            (self.select_files, self.coregister, [
-               ('t1', 'reference'),
-                ('t2_ref', 'in_file')
-            ]),
+        # data flow
+        self.__normalize_anat_workflow.connect([
             (self.select_files, self.anat_transform, [
                 ('t1', 'in_file'),
                 ('standard', 'reference')
@@ -238,11 +193,81 @@ class Normalizer:
                 ('t1', 'in_file'),
                 ('standard', 'ref_file')
             ]),
+            # output
+            (self.nonlinear_transform, self.datasink, [
+                ('fieldcoeff_file', 'normalized.@field'),
+            ]),
+            (self.normalize_anat, self.datasink, [
+                ('out_file', 'normalized.anat')
+            ])
+        ])
+
+
+        # ---------------------------------------------------------------------
+        # FUNCTIONAL NORMALIZATION SUBFLOW
+        #
+        # Make subflow so that FNIRT only runs once on the anatomical scan,
+        # rather than running once per iteration due to multiple functional
+        # runs
+        # ---------------------------------------------------------------------
+
+        self.__normalize_func_workflow = Workflow(name='norm_func')
+        self.__normalize_func_workflow.base_dir = self.__working_dir
+
+
+        self.infosource = Node(
+            IdentityInterface(
+                fields=['t2_files']
+            ),
+            name='infosource'
+        )
+        self.infosource.iterables = [('t2_files', self.t2)]
+
+        self.select_files = Node(
+            SelectFiles(
+                {'t1': os.path.join(self.data_dir, self.sub_id, self.t1),
+                 't2_ref': os.path.join(self.data_dir, self.sub_id, self.t2_ref),
+                 't2_files': os.path.join(self.data_dir, self.sub_id, '{t2_files}'),
+                 'standard': self.standard}
+            ),
+            name='select_files'
+        )
+
+        # nodes only necessary for coregistration
+        self.coregister_transform = _get_linear_transform('coregister_transform')
+        self.coregister = _apply_linear_transform('coregister')
+
+        self.normalize_func = MapNode(fsl.ApplyWarp(), name='normalize_func',
+                                      iterfield=['in_file'])
+
+        # intra-norm/coreg nodes
+        self.__normalize_func_workflow.connect([
+
+            # transform funct to anat
+            (self.coregister_transform, self.coregister, [
+                ('out_matrix_file', 'in_matrix_file')
+            ]),
+            # transform funct to mni
+            (self.coregister_transform, self.normalize_func, [
+                ('out_matrix_file', 'premat')
+            ])
+        ])
+
+        # data flow
+        self.__normalize_func_workflow.connect([
+            (self.infosource, self.select_files, [('t2_files', 't2_files')]),
+            (self.select_files, self.coregister_transform, [
+                ('t1', 'reference'),
+                ('t2_ref', 'in_file')
+            ]),
+            (self.select_files, self.coregister, [
+               ('t1', 'reference'),
+                ('t2_ref', 'in_file')
+            ]),
             (self.select_files, self.normalize_func, [
                 ('t2_files', 'in_file'),
                 ('standard', 'ref_file')
             ]),
-
             # output
             (self.coregister, self.datasink, [
                 ('out_file', 'registered')
@@ -250,16 +275,24 @@ class Normalizer:
             (self.coregister_transform, self.datasink, [
                 ('out_matrix_file', 'registered.@mat')
             ]),
-            (self.nonlinear_transform, self.datasink, [
-                ('fieldcoeff_file', 'normalized.@field'),
-            ]),
-            (self.normalize_anat, self.datasink, [
-                ('out_file', 'normalized.anat')
-            ]),
             (self.normalize_func, self.datasink, [
                 ('out_file', 'normalized.@func')
             ])
         ])
+
+        # ---------
+        # META-FLOW
+        # ---------
+
+        self.workflow = Workflow('normalize')
+        self.workflow.base_dir = self.__working_dir
+
+        self.workflow.connect([
+            (self.__normalize_anat_workflow, self.__normalize_func_workflow, [
+                ('nonlinear_transform.fieldcoeff_file', 'normalize_func.field_file')
+            ])
+        ])
+
 
         return self
 
