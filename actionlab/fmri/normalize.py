@@ -183,7 +183,7 @@ class Normalizer:
         )
 
         self.normalize_func = MapNode(fsl.ApplyWarp(), name='normalize_func',
-                                      iterfield='in_file')
+                                      iterfield=['in_file'])
         self.normalize_anat = Node(fsl.ApplyWarp(), name='normalize_anat')
 
         # -------------------------------
@@ -193,11 +193,11 @@ class Normalizer:
         self.workflow.connect([
             # transform anat to mni
             (self.anat_transform, self.nonlinear_transform, [
-                'out_matrix_file', 'affine_file'
+                ('out_matrix_file', 'affine_file')
             ]),
-            self.nonlinear_transform, self.normalize_anat, [
-                'fieldcoeff_file', 'field_file'
-            ],
+            (self.nonlinear_transform, self.normalize_anat, [
+                ('fieldcoeff_file', 'field_file')
+            ]),
 
             # transform funct to anat
             (self.coregister_transform, self.coregister, [
@@ -205,10 +205,10 @@ class Normalizer:
             ]),
             # transform funct to mni
             (self.coregister_transform, self.normalize_func, [
-                'out_matrix_file', 'premat'
+                ('out_matrix_file', 'premat')
             ]),
             (self.nonlinear_transform, self.normalize_func, [
-                'fieldcoeff_file', 'field_file'
+                ('fieldcoeff_file', 'field_file')
             ])
         ])
 
@@ -226,10 +226,14 @@ class Normalizer:
                ('t1', 'reference'),
                 ('t2_ref', 'in_file')
             ]),
+            (self.select_files, self.anat_transform, [
+                ('t1', 'in_file'),
+                ('standard', 'reference')
+            ]),
             (self.select_files, self.nonlinear_transform, [
                 ('t1', 'in_file'),
                 ('standard', 'ref_file')
-            ])
+            ]),
             (self.select_files, self.normalize_anat, [
                 ('t1', 'in_file'),
                 ('standard', 'ref_file')
@@ -237,7 +241,7 @@ class Normalizer:
             (self.select_files, self.normalize_func, [
                 ('t2_files', 'in_file'),
                 ('standard', 'ref_file')
-            ])
+            ]),
 
             # output
             (self.coregister, self.datasink, [
@@ -248,7 +252,7 @@ class Normalizer:
             ]),
             (self.nonlinear_transform, self.datasink, [
                 ('fieldcoeff_file', 'normalized.@field'),
-            ])
+            ]),
             (self.normalize_anat, self.datasink, [
                 ('out_file', 'normalized.anat')
             ]),
@@ -319,14 +323,14 @@ class Normalizer:
         # -------------------
 
         # nodes only necessary for coregistration
-        self.coregister_transform = _get_transform('coregister_transform')
-        self.coregister = _apply_transform('coregister')
+        self.coregister_transform = _get_linear_transform('coregister_transform')
+        self.coregister = _apply_linear_transform('coregister')
 
         # extra nodes to complete normalization
-        self.anat_transform = _get_transform('anat_transform')
-        self.normalize_anat = _apply_transform('normalize_anat')
+        self.anat_transform = _get_linear_transform('anat_transform')
+        self.normalize_anat = _apply_linear_transform('normalize_anat')
         self.concat = _concat_transforms('concat')
-        self.normalize_func = _apply_transform('normalize_func')
+        self.normalize_func = _apply_linear_transform('normalize_func')
 
         # -------------------------------
         # Intra-normalization connections
@@ -426,8 +430,9 @@ class Normalizer:
         t1_path = [i for i in os.listdir(
             os.path.join(self.__sub_output_dir, 'normalized/anat')
             ) if i.endswith('nii.gz')
+        ]
 
-        registration_report(os.path.join(self.__report_dir, 't1_to_mni.png')
+        registration_report(os.path.join(self.__report_dir, 't1_to_mni.png'),
                             t1_path, title='T1w to MNI Normalization')
         registration_report(os.path.join(self.__report_dir, 't2_to_t1.png'),
                             normed_t2_path, t1_path, title='Coregistration')
