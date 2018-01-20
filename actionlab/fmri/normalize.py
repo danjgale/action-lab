@@ -62,6 +62,17 @@ def _concat_transforms(node_name):
     convert.inputs.concat_xfm = True
     return Node(convert, name=node_name)
 
+def _get_file(directory, endswith='nii.gz'):
+
+    file_ = [os.path.join(directory, i)
+                for i in os.listdir(directory) if i.endswith(endswith)]
+
+    if len(file_) > 1:
+        raise ValueError('Too many matching files found in directory. Check directory')
+    elif len(file_) < 1:
+        raise ValueError('No matching file found in directory. Check directory')
+    else:
+        return file_[0]
 
 class Normalizer:
 
@@ -91,7 +102,9 @@ class Normalizer:
         if standard is None:
             # default to MNI
             module_path = os.path.dirname(__file__)
-            self.standard = os.path.abspath(os.path.join(module_path, '../../resources/MNI152_T1_2mm_brain.nii'))
+            self.standard = os.path.abspath(
+                os.path.join(module_path, '../../resources/MNI152_T1_2mm_brain.nii')
+            )
         else:
             self.standard = standard
 
@@ -148,14 +161,8 @@ class Normalizer:
             name='anat_files'
         )
 
-        # generate affine transformation
+        # normalization nodes
         self.anat_transform = _get_linear_transform('anat_transform')
-        #self.normalize_anat = _apply_linear_transform('normalize_anat')
-        #self.concat = _concat_transforms('concat')
-        # self.normalize_func = _apply_linear_transform('normalize_func')
-
-        # generate nonlinear normalization transform
-        # to be added in workflow: in_file, ref_file, affine_file
         self.nonlinear_transform = Node(
             fsl.FNIRT(
                 in_fwhm=self.fnirt_fwhm,
@@ -165,7 +172,6 @@ class Normalizer:
             ),
             name='nonlinear_transform'
         )
-
         self.normalize_anat = Node(fsl.ApplyWarp(), name='normalize_anat')
 
 
@@ -208,9 +214,8 @@ class Normalizer:
         # ---------------------------------------------------------------------
         # FUNCTIONAL NORMALIZATION SUBFLOW
         #
-        # Make subflow so that FNIRT only runs once on the anatomical scan,
-        # rather than running once per iteration due to multiple functional
-        # runs
+        # Coregister T2 scans and normalize (field coeff to be supplied by
+        # joining norm_anat workflow)
         # ---------------------------------------------------------------------
 
         self.__normalize_func_workflow = Workflow(name='norm_func')
@@ -307,7 +312,6 @@ class Normalizer:
                 ('nonlinear_transform.fieldcoeff_file', 'normalize_motion_ref.field_file')
             ])
         ])
-
 
         return self
 
@@ -464,28 +468,15 @@ class Normalizer:
 
     def make_reports(self):
 
-
-        def get_file(directory, endswith='nii.gz'):
-
-            file_ = [os.path.join(directory, i) for i in os.listdir(directory) if i.endswith(endswith)]
-            
-            if len(file_) > 1:
-                raise ValueError('Too many matching files found in directory. Check directory')
-            elif len(file_) < 1:
-                raise ValueError('No matching file found in directory. Check directory')
-            else:
-              return file_[0]
-
         self.__report_dir = os.path.join(self.__sub_output_dir, 'reports')
 
         if not os.path.exists(self.__report_dir):
             os.makedirs(self.__report_dir)
 
-        
-        raw_t1 = get_file(os.path.join(self.data_dir, self.sub_id, 'anatomical'))
-        coreg_t2 = get_file(os.path.join(self.__sub_output_dir, 'registered'))
-        normed_t1 = get_file(os.path.join(self.__sub_output_dir, 'normalized/anat'))
-        normed_t2 = get_file(os.path.join(self.__sub_output_dir, 'normalized/motion_ref'))
+        raw_t1 = _get_file(os.path.join(self.data_dir, self.sub_id, 'anatomical'))
+        coreg_t2 = _get_file(os.path.join(self.__sub_output_dir, 'registered'))
+        normed_t1 = _get_file(os.path.join(self.__sub_output_dir, 'normalized/anat'))
+        normed_t2 = _get_file(os.path.join(self.__sub_output_dir, 'normalized/motion_ref'))
 
         registration_report(os.path.join(self.__report_dir, 't1_to_mni.png'),
                             normed_t1, title='T1w to MNI Normalization')
@@ -495,3 +486,13 @@ class Normalizer:
                             normed_t2, title='T2w to MNI Normalization')
 
 
+def apply_registration(self, files, output_dir, coreg_matrix, t1_affine,
+                       field_file=None):
+    """Take transformations matrices from previous coregistrations and/or
+    normalizations and apply to set of files. Mainly useful for
+    transforming model stat-maps
+    """
+
+    # if field_file none, do linear normalization, if not none, do
+    # nonlinear transformation
+    pass
