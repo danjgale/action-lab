@@ -22,7 +22,8 @@ def registration_report(fn, in_file, target=None, nslices=8,
                         title=None):
 
     if target is None:
-        target = '../../resources/MNI152_T1_2mm_brain.nii'
+        module_path = os.path.dirname(__file__)
+        target = os.path.join(module_path, '../../resources/MNI152_T1_2mm_brain.nii')
 
     fig, ax = plt.subplots(3, 1, figsize=(20, 25))
     ax[0].set_title(title, fontsize=30)
@@ -90,7 +91,7 @@ class Normalizer:
         if standard is None:
             # default to MNI
             module_path = os.path.dirname(__file__)
-            self.standard = os.path.join(module_path, '../../resources/MNI152_T1_2mm_brain.nii')
+            self.standard = os.path.abspath(os.path.join(module_path, '../../resources/MNI152_T1_2mm_brain.nii'))
         else:
             self.standard = standard
 
@@ -143,7 +144,7 @@ class Normalizer:
                 {'t1': os.path.join(self.data_dir, self.sub_id, self.t1),
                  'standard': self.standard
                 }
-            )
+            ),
             name='anat_files'
         )
 
@@ -160,7 +161,7 @@ class Normalizer:
                 in_fwhm=self.fnirt_fwhm,
                 subsampling_scheme=self.fnirt_subsampling_scheme,
                 warp_resolution=self.fnirt_warp_resolution,
-                config_file='T1_2_MNI152_2mm' # see if needed/desired
+                fieldcoeff_file=True
             ),
             name='nonlinear_transform'
         )
@@ -181,21 +182,22 @@ class Normalizer:
 
         # data flow
         self.__normalize_anat_workflow.connect([
-            (self.select_files, self.anat_transform, [
+            (self.anat_files, self.anat_transform, [
                 ('t1', 'in_file'),
                 ('standard', 'reference')
             ]),
-            (self.select_files, self.nonlinear_transform, [
+            (self.anat_files, self.nonlinear_transform, [
                 ('t1', 'in_file'),
                 ('standard', 'ref_file')
             ]),
-            (self.select_files, self.normalize_anat, [
+            (self.anat_files, self.normalize_anat, [
                 ('t1', 'in_file'),
                 ('standard', 'ref_file')
             ]),
             # output
             (self.nonlinear_transform, self.datasink, [
-                ('fieldcoeff_file', 'normalized.@field'),
+                ('fieldcoeff_file', 'normalized.field'),
+                ('warped_file', 'normalized.fnirt_warped_file')
             ]),
             (self.normalize_anat, self.datasink, [
                 ('out_file', 'normalized.anat')
@@ -240,6 +242,8 @@ class Normalizer:
         self.normalize_func = MapNode(fsl.ApplyWarp(), name='normalize_func',
                                       iterfield=['in_file'])
 
+        self.normalize_motion_ref = Node(fsl.ApplyWarp(), name='normalize_motion_ref')
+
         # intra-norm/coreg nodes
         self.__normalize_func_workflow.connect([
 
@@ -250,6 +254,9 @@ class Normalizer:
             # transform funct to mni
             (self.coregister_transform, self.normalize_func, [
                 ('out_matrix_file', 'premat')
+            ]),
+            (self.coregister_transform, self.normalize_motion_ref, [
+                ('out_matrix_file', 'premat'),
             ])
         ])
 
@@ -261,11 +268,15 @@ class Normalizer:
                 ('t2_ref', 'in_file')
             ]),
             (self.select_files, self.coregister, [
-               ('t1', 'reference'),
+                ('t1', 'reference'),
                 ('t2_ref', 'in_file')
             ]),
             (self.select_files, self.normalize_func, [
                 ('t2_files', 'in_file'),
+                ('standard', 'ref_file')
+            ]),
+            (self.select_files, self.normalize_motion_ref, [
+                ('t2_ref', 'in_file'),
                 ('standard', 'ref_file')
             ]),
             # output
@@ -277,6 +288,9 @@ class Normalizer:
             ]),
             (self.normalize_func, self.datasink, [
                 ('out_file', 'normalized.@func')
+            ]),
+            (self.normalize_motion_ref, self.datasink, [
+                ('out_file', 'normalized.motion_ref')
             ])
         ])
 
@@ -284,12 +298,13 @@ class Normalizer:
         # META-FLOW
         # ---------
 
-        self.workflow = Workflow('normalize')
+        self.workflow = Workflow('nonlinear_normalize')
         self.workflow.base_dir = self.__working_dir
 
         self.workflow.connect([
             (self.__normalize_anat_workflow, self.__normalize_func_workflow, [
-                ('nonlinear_transform.fieldcoeff_file', 'normalize_func.field_file')
+                ('nonlinear_transform.fieldcoeff_file', 'normalize_func.field_file'),
+                ('nonlinear_transform.fieldcoeff_file', 'normalize_motion_ref.field_file')
             ])
         ])
 
@@ -303,7 +318,7 @@ class Normalizer:
         self.parameterize_output = parameterize_output
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
-        self.workflow = Workflow(name='normalize')
+        self.workflow = Workflow(name='linear_normalize')
         self.workflow.base_dir = self.__working_dir
 
         # ----------
@@ -449,27 +464,34 @@ class Normalizer:
 
     def make_reports(self):
 
+
+        def get_file(directory, endswith='nii.gz'):
+
+            file_ = [os.path.join(directory, i) for i in os.listdir(directory) if i.endswith(endswith)]
+            
+            if len(file_) > 1:
+                raise ValueError('Too many matching files found in directory. Check directory')
+            elif len(file_) < 1:
+                raise ValueError('No matching file found in directory. Check directory')
+            else:
+              return file_[0]
+
         self.__report_dir = os.path.join(self.__sub_output_dir, 'reports')
 
         if not os.path.exists(self.__report_dir):
             os.makedirs(self.__report_dir)
 
-
-        normed_t2_path = [i for i in os.listdir(
-            os.path.join(self.__sub_output_dir, 'registered')
-            ) if i.endswith('.nii.gz')
-        ]
-
-        t1_path = [i for i in os.listdir(
-            os.path.join(self.__sub_output_dir, 'normalized/anat')
-            ) if i.endswith('nii.gz')
-        ]
+        
+        raw_t1 = get_file(os.path.join(self.data_dir, self.sub_id, 'anatomical'))
+        coreg_t2 = get_file(os.path.join(self.__sub_output_dir, 'registered'))
+        normed_t1 = get_file(os.path.join(self.__sub_output_dir, 'normalized/anat'))
+        normed_t2 = get_file(os.path.join(self.__sub_output_dir, 'normalized/motion_ref'))
 
         registration_report(os.path.join(self.__report_dir, 't1_to_mni.png'),
-                            t1_path, title='T1w to MNI Normalization')
+                            normed_t1, title='T1w to MNI Normalization')
         registration_report(os.path.join(self.__report_dir, 't2_to_t1.png'),
-                            normed_t2_path, t1_path, title='Coregistration')
+                            coreg_t2, raw_t1, title='Coregistration')
         registration_report(os.path.join(self.__report_dir, 't2_to_mni.png'),
-                            normed_t2_path, title='T2w to MNI Normalization')
+                            normed_t2, title='T2w to MNI Normalization')
 
 
