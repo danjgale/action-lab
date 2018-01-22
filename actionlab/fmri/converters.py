@@ -23,8 +23,8 @@ def convert_to_nifti(input_dir, output_dir, compress=True):
 
     if compress:
             compress_flag = 'i'
-        else:
-            compress_flag = 'n'
+    else:
+        compress_flag = 'n'
 
     _make_path(output_dir)
 
