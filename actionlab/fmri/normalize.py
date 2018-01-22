@@ -74,6 +74,24 @@ def _get_file(directory, endswith='nii.gz'):
     else:
         return file_[0]
 
+def MNI152_T1_2mm_config():
+    # no mask added for now
+    args = {
+        'subsampling_scheme': [4, 4, 2, 2, 1, 1],
+        'max_nonlin_iter': [5, 5, 5, 5, 5, 10],
+        'in_fwhm': [8, 6, 5, 4.5, 3, 2],
+        'ref_fwhm': [8, 6, 5, 4, 2, 0]
+        'intensity_mapping_model': 'global_non_linear_with_bias',
+        'apply_intensity_mapping': [1, 1, 1, 1, 1, 0],
+        'regularization_lambda': 'bending_energy',
+        'biasfield_resolution': [50, 50, 50],
+        'bias_regularization_lambda': 10000,
+        'derive_from_ref': False,
+        'fieldcoeff_file': True # not in config but needed in pipeline
+    }
+    return args
+
+
 class Normalizer:
 
     def __init__(self, sub_id, data_dir, output_dir,
@@ -111,9 +129,8 @@ class Normalizer:
         self.__is_nonlinear = None
 
 
-    def build_nonlinear(self, parameterize_output=False, fnirt_fwhm=[6, 4, 2, 2],
-              fnirt_subsampling_scheme=[4, 2, 1, 1],
-              fnirt_warp_resolution=(10, 10, 10)):
+    def build_nonlinear(self, parameterize_output=False,
+                        fnirt_kwargs={'fieldcoeff_file': True}):
 
         self.__is_nonlinear = True
         self.parameterize_output = parameterize_output
@@ -164,13 +181,7 @@ class Normalizer:
         # normalization nodes
         self.anat_transform = _get_linear_transform('anat_transform')
         self.nonlinear_transform = Node(
-            fsl.FNIRT(
-                in_fwhm=self.fnirt_fwhm,
-                subsampling_scheme=self.fnirt_subsampling_scheme,
-                warp_resolution=self.fnirt_warp_resolution,
-                fieldcoeff_file=True
-            ),
-            name='nonlinear_transform'
+            fsl.FNIRT(**fnirt_kwargs), name='nonlinear_transform'
         )
         self.normalize_anat = Node(fsl.ApplyWarp(), name='normalize_anat')
 
