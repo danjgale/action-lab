@@ -19,7 +19,7 @@ from nipype.algorithms.misc import Gunzip
 class Preprocessor:
 
     def __init__(self, sub_id, data_dir, functionals, output_dir,
-                 anatomical='*CNS_SAG_MPRAGE_*.nii.gz', 
+                 anatomical='*CNS_SAG_MPRAGE_*.nii.gz',
                  prepend_functional_path=None):
 
         self.sub_id = sub_id
@@ -38,7 +38,7 @@ class Preprocessor:
 
         self.anatomical = anatomical
 
-        
+
 
     @staticmethod
     def _get_motion_params(plot_type, name='motion_plot'):
@@ -51,15 +51,16 @@ class Preprocessor:
             iterfield='in_file'
         )
 
-    def build(self, TR, parameterize_output=False, fwhm=5.0,
+    def build(self, TR, parameterize_output=False, bet_center=None, fwhm=5.0,
               skullstrip_frac=0.5, skullstrip_gradient=0,
               motion_ref_volume=4):
 
         self.TR = TR
+        self.bet_center = bet_center # x y z in voxel coordinates
         self.fwhm = fwhm
         self.skullstrip_frac = skullstrip_frac
         self.skullstrip_gradient = skullstrip_gradient
-        self.parameterize_output = parameterize_output 
+        self.parameterize_output = parameterize_output
         self.motion_ref_volume = motion_ref_volume
 
 
@@ -179,6 +180,9 @@ class Preprocessor:
             ),
             name='skullstrip'
         )
+
+        if self.bet_center is not None:
+            self.skullstrip.inputs.center = self.bet_center
 
         # -------------------------
         # Build preprocessing nodes
