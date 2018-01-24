@@ -172,10 +172,6 @@ class Normalizer:
         self.__normalize_anat_workflow = Workflow(name='norm_anat')
         self.__normalize_anat_workflow.base_dir = self.__working_dir
 
-        print(self.standard)
-        print(os.path.abspath(os.path.curdir))
-        #raise Exception
-
         self.anat_infosource = Node(
             IdentityInterface(
                 fields=['t1']
