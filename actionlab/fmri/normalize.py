@@ -138,11 +138,16 @@ class Normalizer:
         self.__is_nonlinear = None
 
 
-    def build_nonlinear(self, parameterize_output=False,
-                        fnirt_kwargs=test_kwargs()):
+    def build_nonlinear(self, parameterize_output=False, t2_t1_dof=12,
+                        t2_t1_bins=None, t1_mni_dof=12, t1_mni_bins=None,
+                        fnirt_kwargs=None):
 
         self.__is_nonlinear = True
         self.parameterize_output = parameterize_output
+        self.t2_t1_dof = t2_t1_dof
+        self.t2_t1_bins = t2_t1_bins
+        self.t1_mni_dof = t1_mni_dof
+        self.t1_mni_bins = t1_mni_bins
         self.fnirt_kwargs = fnirt_kwargs
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
@@ -190,17 +195,19 @@ class Normalizer:
 
         self.anat_files = Node(
             SelectFiles(
-                {'t1': os.path.join(self.data_dir, self.sub_id, '{t1}'), 
+                {'t1': os.path.join(self.data_dir, self.sub_id, '{t1}'),
                   'standard': self.standard}
             ),
             name='anat_files'
         )
 
         # normalization nodes
-        self.anat_transform = _get_linear_transform('anat_transform')
+        self.anat_transform = _get_linear_transform(
+            'anat_transform', self.t1_mni_dof, self.t1_mni_bins
+        )
         self.nonlinear_transform = Node(
-            fsl.FNIRT(ref_file=self.standard, 
-                      config_file=os.path.join(os.environ["FSLDIR"], "etc/flirtsch/T1_2_MNI152_2mm.cnf"), 
+            fsl.FNIRT(ref_file=self.standard,
+                      config_file=os.path.join(os.environ["FSLDIR"], "etc/flirtsch/T1_2_MNI152_2mm.cnf"),
                       fieldcoeff_file=True
             ),
             name='nonlinear_transform'
@@ -276,7 +283,9 @@ class Normalizer:
         )
 
         # nodes only necessary for coregistration
-        self.coregister_transform = _get_linear_transform('coregister_transform')
+        self.coregister_transform = _get_linear_transform(
+            'coregister_transform', self.t2_t1_dof, self.t2_t1_bins
+        )
         self.coregister = _apply_linear_transform('coregister')
 
         self.normalize_func = MapNode(fsl.ApplyWarp(), name='normalize_func',
@@ -351,10 +360,15 @@ class Normalizer:
         return self
 
 
-    def build_linear(self, parameterize_output=False):
+    def build_linear(self, parameterize_output=False, t2_t1_dof=12,
+                        t2_t1_bins=None, t1_mni_dof=12, t1_mni_bins=None):
 
         self.__is_nonlinear = False
         self.parameterize_output = parameterize_output
+        self.t2_t1_dof = t2_t1_dof
+        self.t2_t1_bins = t2_t1_bins
+        self.t1_mni_dof = t1_mni_dof
+        self.t1_mni_bins = t1_mni_bins
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
         self.workflow = Workflow(name='linear_normalize')
@@ -410,11 +424,15 @@ class Normalizer:
         # -------------------
 
         # nodes only necessary for coregistration
-        self.coregister_transform = _get_linear_transform('coregister_transform')
+        self.coregister_transform = _get_linear_transform(
+            'coregister_transform', self.t2_t1_dof, self.t2_t1_bins
+        )
         self.coregister = _apply_linear_transform('coregister')
 
         # extra nodes to complete normalization
-        self.anat_transform = _get_linear_transform('anat_transform')
+        self.anat_transform = _get_linear_transform(
+            'anat_transform', self.t1_mni_dof, self.t1_mni_bins
+        )
         self.normalize_anat = _apply_linear_transform('normalize_anat')
         self.concat = _concat_transforms('concat')
         self.normalize_func = _apply_linear_transform('normalize_func')
