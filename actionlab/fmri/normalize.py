@@ -18,11 +18,8 @@ from nipype.interfaces.utility import IdentityInterface, Function
 from nilearn.plotting import plot_anat
 
 
-def registration_report(fn, in_file, target=None, nslices=8,
+def registration_report(fn, in_file, target, nslices=8,
                         title=None):
-
-    if target is None:
-        target = fsl.Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
 
     fig, ax = plt.subplots(3, 1, figsize=(20, 25))
     ax[0].set_title(title, fontsize=30)
@@ -105,7 +102,7 @@ def test_kwargs():
 class Normalizer:
 
     def __init__(self, sub_id, data_dir, output_dir,
-                 t1, t2, t2_ref, standard=None):
+                 t1, t2, t2_ref, standard='MNI152_T1_2mm_brain.nii.gz'):
 
         self.sub_id = sub_id
         self.data_dir = data_dir
@@ -127,13 +124,7 @@ class Normalizer:
             # assume as list (to be specified in docs)
             self.t2 = t2
 
-        if standard is None:
-            # default to MNI
-            module_path = os.path.dirname(__file__)
-            self.standard = fsl.Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
-            print(self.standard)
-        else:
-            self.standard = standard
+        self.standard = fsl.Info.standard_image(standard)
 
         self.__is_nonlinear = None
 
@@ -532,11 +523,11 @@ class Normalizer:
         normed_t2 = _get_file(os.path.join(self.__sub_output_dir, 'normalized/motion_ref'))
 
         registration_report(os.path.join(self.__report_dir, 't1_to_mni.png'),
-                            normed_t1, title='T1w to MNI Normalization')
+                            normed_t1, self.standard, title='T1w to MNI Normalization')
         registration_report(os.path.join(self.__report_dir, 't2_to_t1.png'),
                             coreg_t2, raw_t1, title='Coregistration')
         registration_report(os.path.join(self.__report_dir, 't2_to_mni.png'),
-                            normed_t2, title='T2w to MNI Normalization')
+                            normed_t2, self.standard, title='T2w to MNI Normalization')
 
 
 def apply_registration(self, files, output_dir, coreg_matrix, t1_affine,
