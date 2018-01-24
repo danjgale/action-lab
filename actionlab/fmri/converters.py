@@ -34,7 +34,7 @@ def convert_to_nifti(input_dir, output_dir, compress=True):
             output_dir=output_dir,
             out_filename='%t%p%s',
             compress=compress_flag,
-            single_file=True
+            single_file=False
         ).run()
     except Exception as e:
         # Will get a trait error after each participant
