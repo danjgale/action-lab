@@ -22,8 +22,7 @@ def registration_report(fn, in_file, target=None, nslices=8,
                         title=None):
 
     if target is None:
-        module_path = os.path.dirname(__file__)
-        target = os.path.join(module_path, '../../resources/MNI152_T1_2mm_brain.nii')
+        target = fsl.Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
 
     fig, ax = plt.subplots(3, 1, figsize=(20, 25))
     ax[0].set_title(title, fontsize=30)
@@ -79,17 +78,28 @@ def MNI152_T1_2mm_config():
     args = {
         'subsampling_scheme': [4, 4, 2, 2, 1, 1],
         'max_nonlin_iter': [5, 5, 5, 5, 5, 10],
-        'in_fwhm': [8, 6, 5, 4.5, 3, 2],
-        'ref_fwhm': [8, 6, 5, 4, 2, 0]
+        'in_fwhm': [8, 6, 5, 4, 3, 2],
+        'ref_fwhm': [8, 6, 5, 4, 2, 0],
         'intensity_mapping_model': 'global_non_linear_with_bias',
+        'intensity_mapping_order': 5,
         'apply_intensity_mapping': [1, 1, 1, 1, 1, 0],
-        'regularization_lambda': 'bending_energy',
-        'biasfield_resolution': [50, 50, 50],
+        'regularization_lambda': [300,150,100,50,40,30],
+        'regularization_model': 'bending_energy',
+        'biasfield_resolution': (50, 50, 50),
         'bias_regularization_lambda': 10000,
         'derive_from_ref': False,
         'fieldcoeff_file': True # not in config but needed in pipeline
     }
     return args
+
+def test_kwargs():
+    return {
+        #'subsampling_scheme': [4, 4, 2, 2, 1, 1],
+        #'max_nonlin_iter': [5, 5, 5, 5, 5, 10],
+        #'in_fwhm': [8, 6, 5, 4, 3, 2],
+        #'ref_fwhm': [8, 6, 5, 4, 2, 0],
+        'fieldcoeff_file': True
+    }
 
 
 class Normalizer:
@@ -120,9 +130,8 @@ class Normalizer:
         if standard is None:
             # default to MNI
             module_path = os.path.dirname(__file__)
-            self.standard = os.path.abspath(
-                os.path.join(module_path, '../../resources/MNI152_T1_2mm_brain.nii')
-            )
+            self.standard = fsl.Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
+            print(self.standard)
         else:
             self.standard = standard
 
@@ -130,13 +139,11 @@ class Normalizer:
 
 
     def build_nonlinear(self, parameterize_output=False,
-                        fnirt_kwargs={'fieldcoeff_file': True}):
+                        fnirt_kwargs=test_kwargs()):
 
         self.__is_nonlinear = True
         self.parameterize_output = parameterize_output
-        self.fnirt_fwhm = fnirt_fwhm
-        self.fnirt_subsampling_scheme = fnirt_subsampling_scheme
-        self.fnirt_warp_resolution = fnirt_warp_resolution
+        self.fnirt_kwargs = fnirt_kwargs
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
 
@@ -169,11 +176,22 @@ class Normalizer:
         self.__normalize_anat_workflow = Workflow(name='norm_anat')
         self.__normalize_anat_workflow.base_dir = self.__working_dir
 
+        print(self.standard)
+        print(os.path.abspath(os.path.curdir))
+        #raise Exception
+
+        self.anat_infosource = Node(
+            IdentityInterface(
+                fields=['t1']
+            ),
+            name='infosource'
+        )
+        self.anat_infosource.inputs.t1 = self.t1
+
         self.anat_files = Node(
             SelectFiles(
-                {'t1': os.path.join(self.data_dir, self.sub_id, self.t1),
-                 'standard': self.standard
-                }
+                {'t1': os.path.join(self.data_dir, self.sub_id, '{t1}'), 
+                  'standard': self.standard}
             ),
             name='anat_files'
         )
@@ -181,7 +199,11 @@ class Normalizer:
         # normalization nodes
         self.anat_transform = _get_linear_transform('anat_transform')
         self.nonlinear_transform = Node(
-            fsl.FNIRT(**fnirt_kwargs), name='nonlinear_transform'
+            fsl.FNIRT(ref_file=self.standard, 
+                      config_file=os.path.join(os.environ["FSLDIR"], "etc/flirtsch/T1_2_MNI152_2mm.cnf"), 
+                      fieldcoeff_file=True
+            ),
+            name='nonlinear_transform'
         )
         self.normalize_anat = Node(fsl.ApplyWarp(), name='normalize_anat')
 
@@ -199,13 +221,15 @@ class Normalizer:
 
         # data flow
         self.__normalize_anat_workflow.connect([
+            (self.anat_infosource, self.anat_files, [
+                ('t1', 't1')
+            ]),
             (self.anat_files, self.anat_transform, [
                 ('t1', 'in_file'),
                 ('standard', 'reference')
             ]),
             (self.anat_files, self.nonlinear_transform, [
-                ('t1', 'in_file'),
-                ('standard', 'ref_file')
+                ('t1', 'in_file')
             ]),
             (self.anat_files, self.normalize_anat, [
                 ('t1', 'in_file'),
@@ -465,7 +489,7 @@ class Normalizer:
 
         return self
 
-    def run(self, parallel=True, print_header=True, n_procs=8):
+    def run(self, parallel=True, print_header=True, n_procs=4):
 
         if print_header:
             print('=' * 30 + 'SUBJECT {}'.format(self.sub_id) + '=' * 30)
