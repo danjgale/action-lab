@@ -66,7 +66,7 @@ class GLM:
             os.path.join(self.output_dir, 'output')
         )
 
-        return self
+        
 
 
     def build(self, protocol_file, contrasts, runs, run_template,
@@ -117,7 +117,7 @@ class GLM:
 
         self.select_files = Node(
             SelectFiles(
-                {'runs': '{selected_runs}'),
+                {'runs': '{selected_runs}',
                  'realignment_parameters': '{realign_params}'},
                 name='select_files'
             )
@@ -129,7 +129,7 @@ class GLM:
 
         # setup subject's data folder
         self.__sub_output_dir = os.path.join(
-            self.__datasink_dir
+            self.__datasink_dir,
             self.sub_id
         )
 
@@ -155,7 +155,7 @@ class GLM:
                 subject_info = self.sub_info,
                 high_pass_filter_cutoff = self.high_pass_filter_cutoff,
                 time_repetition=self.TR,
-                input_units=self.input_units
+                input_units=self.input_units,
                 concatenate_runs=True
             ),
             name='model_spec'
