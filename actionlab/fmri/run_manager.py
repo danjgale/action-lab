@@ -99,6 +99,26 @@ def _sort_run_times(x, show_time=True):
         return [i[0] for i in ordered_runs]
 
 
+def get_run_numbers(run_list, pattern=r'Vols\d+.nii'):
+    """Get run numbers stored in filenames. Set the regex pattern to include
+    the digit, and the surrounding characters necessary to grab the correct
+    number.
+    """
+
+    try:
+        run_nums = [
+            int(''.join(
+                list(filter(str.isdigit, re.search(pattern, i).group())))
+            )
+            for i in run_list
+        ]
+    except AttributeError:
+        raise ValueError('Could not find match from pattern. Ensure that '
+                         'pattern is found in all functional run filenames')
+
+    return run_nums
+
+
 class RunManager:
 
     def __init__(self, subjects, data_dir, n_vols, use_moco=True,
@@ -115,7 +135,7 @@ class RunManager:
         self.use_moco = use_moco
         self.file_pattern = file_pattern
 
-        
+
 
     def gather(self):
 
@@ -152,7 +172,7 @@ class RunManager:
         for k, v in self.full_path_runs.items():
 
             # extract run number out of pattern the number for
-            # each run (must join each digit in list into a 
+            # each run (must join each digit in list into a
             # single string after filtering/list)
             try:
                 run_nums = [
