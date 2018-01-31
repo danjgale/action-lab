@@ -5,7 +5,9 @@ from .run_manager import (
 )
 from .glm import GLM
 from .converters import convert_to_nifti
+from .roi import GlasserExtractor, binarize_mask_array
 
 __all__ = ['Preprocessor', 'Normalizer', 'registration_report' 'RunManager',
            'is_motion_corrected', 'get_volumes', 'get_run_numbers', 'GLM',
-           'convert_to_nifti', 'MNI152_T1_2mm_config']
+           'convert_to_nifti', 'MNI152_T1_2mm_config', 'GlasserExtractor',
+           'binarize_mask_array']
