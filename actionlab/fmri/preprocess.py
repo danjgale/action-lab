@@ -285,7 +285,7 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
 class Filter:
 
     def __init__(self, sub_id, data_dir, functionals, output_dir,
-                 prepend_functional_path=None, zipped=True):
+                 prepend_functional_path=None, zipped=True, smooth=True):
         """Spatially and temporally filter data using a separate workflow
 
         Using a separate workflow permits spatial/temporal filtering after
@@ -302,15 +302,17 @@ class Filter:
             # assumes that full path is already there
             self.functionals = functionals
         self.zipped = zipped # if functionals are zipped or not
+        self.smooth = smooth
 
         self.output_dir = output_dir
         self.__working_dir =  os.path.join(self.output_dir, 'working')
         self.__datasink_dir = os.path.join(self.output_dir, 'output')
 
-    def build(self, fwhm=[5, 5, 5], highpass=100, TR=2, highpass_units='secs'):
+    def build(self, fwhm=[5, 5, 5], highpass=100, TR=2, highpass_units='secs',
+              workflow_name='filter'):
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
-        self.workflow = Workflow(name='filter')
+        self.workflow = Workflow(name=workflow_name)
         self.workflow.base_dir = self.__working_dir
 
         self.fwhm = fwhm
@@ -380,48 +382,47 @@ class Filter:
             iterables='in_file'
         )
 
-
-        # nodes for smoothing data pipline
-        self.spatial_smooth = Node(
-            spm.Smooth(
-                fwhm=self.fwhm
-            ),
-            name='spatial_smooth',
-            iterables='in_files'
-        )
-        self.postsmooth_temp_filter = Node(
-            fsl.maths.TemporalFilter(
-                highpass_sigma = self.highpass
-                output_type='NIFTI',
+        if self.smooth:
+            # smoothing pipeline
+            self.spatial_smooth = Node(
+                spm.Smooth(
+                    fwhm=self.fwhm
+                ),
+                name='spatial_smooth',
+                iterables='in_files'
             )
-            name='postsmooth_temp_filter'
-        )
-
-
-        self.workflow.connect([
-            (self.spatial_smooth, self.postsmooth_temp_filter, [
-                'smoothed_files', 'in_file'
-            ])
-        ])
+            self.postsmooth_temp_filter = Node(
+                fsl.maths.TemporalFilter(
+                    highpass_sigma = self.highpass
+                    output_type='NIFTI',
+                )
+                name='postsmooth_temp_filter'
+            )
 
         self.workflow.connect([
             (self.infosource, self.select_files, [('functionals', 'functionals')]),
             (self.select_files, self.temp_filter, [
                 ('functionals', 'in_file')
             ]),
-            (self.select_files, self.spatial_smooth, [
-                ('functionals', 'in_files')
+            (self.temp_filter, self.datasink, [
+                ('out_file', 'filtered')
             ])
         ])
 
-        self.workflow.connect([
-            (self.temp_filter, self.datasink, [
-                ('out_file', 'unsmoothed')
-            ]),
-            (self.postsmooth_temp_filter, self.datasink, [
-                ('out_file', 'smoothed')
+        if self.smooth:
+            self.workflow.connect([
+                (self.spatial_smooth, self.postsmooth_temp_filter, [
+                    'smoothed_files', 'in_file'
+                ]),
+                (self.select_files, self.spatial_smooth, [
+                    ('functionals', 'in_files')
+                ]),
+                (self.postsmooth_temp_filter, self.datasink, [
+                ('out_file', 'smoothed_filtered')
             ])
         ])
+
+
 
     return self
 
