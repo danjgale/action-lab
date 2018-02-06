@@ -14,6 +14,8 @@ from nipype.interfaces import fsl, spm
 from nipype.interfaces.fsl.utils import ExtractROI
 from nipype.interfaces.utility import IdentityInterface, Function
 from nipype.algorithms.misc import Gunzip
+from nilearn.image import smooth_img
+from nibabel import nifti1
 
 
 class Preprocessor:
@@ -266,3 +268,174 @@ class Preprocessor:
             self.workflow.run()
 
         return self
+
+
+def spatially_smooth(input_files, fwhm, output_dir=None):
+
+    image_list = [smooth_img(i, fwhm) for i in input_files]
+
+    if output_dir is None:
+        return image_list
+    else:
+        [nifti1.save(j, os.path.join(output_dir, 'smoothed_{}'.format(input_files[i])))
+        for i, j in enumerate(image_list)]
+
+
+
+class Filter:
+
+    def __init__(self, sub_id, data_dir, functionals, output_dir,
+                 prepend_functional_path=None, zipped=True):
+        """Spatially and temporally filter data using a separate workflow
+
+        Using a separate workflow permits spatial/temporal filtering after
+        normalization (i.e. an SPM-style workflow).
+        """
+
+        self.sub_id = sub_id
+        self.data_dir = data_dir
+
+        if prepend_functional_path is not None:
+            # add prepended path (full path required if not present)
+            self.functionals = [os.path.join(prepend_functional_path, i) for i in functionals]
+        else:
+            # assumes that full path is already there
+            self.functionals = functionals
+        self.zipped = zipped # if functionals are zipped or not
+
+        self.output_dir = output_dir
+        self.__working_dir =  os.path.join(self.output_dir, 'working')
+        self.__datasink_dir = os.path.join(self.output_dir, 'output')
+
+    def build(self, fwhm=[5, 5, 5], highpass=100, TR=2, highpass_units='secs'):
+
+        nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
+        self.workflow = Workflow(name='filter')
+        self.workflow.base_dir = self.__working_dir
+
+        self.fwhm = fwhm
+
+        if highpass_units == 'secs':
+            self.highpass = highpass / 2
+        elif highpass_units == 'vols':
+            self.highpass = highpass
+        else:
+            raise ValueError("Value for highpass_units must be either 'secs' or 'vols'")
+
+        # ----------
+        # Data Input
+        # ----------
+
+        self.infosource = Node(
+            IdentityInterface(
+                fields=['sub_id', 'functionals']
+            ),
+            name='infosource'
+        )
+        self.infosource.inputs.sub_id = self.sub_id
+        self.infosource.iterables = [('functionals', self.functionals)]
+
+
+        self.select_files = Node(
+            SelectFiles(
+                {'funct': os.path.join(self.data_dir, self.sub_id, '{functionals}'))}
+            ),
+            name='select_files'
+        )
+
+        # -----------
+        # Data Output
+        # -----------
+
+        # setup subject's data folder
+        self.__sub_output_dir = os.path.join(
+            self.__datasink_dir,
+            self.sub_id
+        )
+
+        if not os.path.exists(self.__sub_output_dir):
+            os.makedirs(self.__sub_output_dir)
+
+        self.datasink = Node(
+            DataSink(
+                base_directory=self.__datasink_dir,
+                container=self.__sub_output_dir,
+                substitutions=[('_subject_id_', ''), ('sub_id_', '')],
+                parameterization=self.parameterize_output
+            ),
+            name='datasink'
+        )
+
+        # ------------
+        # Filter Nodes
+        # ------------
+
+        # nodes for unsmoothed data pipeline
+        self.temp_filter = Node(
+            fsl.maths.TemporalFilter(
+                highpass_sigma = self.highpass
+                output_type='NIFTI',
+            )
+            name='presmooth_temp_filter',
+            iterables='in_file'
+        )
+
+
+        # nodes for smoothing data pipline
+        self.spatial_smooth = Node(
+            spm.Smooth(
+                fwhm=self.fwhm
+            ),
+            name='spatial_smooth',
+            iterables='in_files'
+        )
+        self.postsmooth_temp_filter = Node(
+            fsl.maths.TemporalFilter(
+                highpass_sigma = self.highpass
+                output_type='NIFTI',
+            )
+            name='postsmooth_temp_filter'
+        )
+
+
+        self.workflow.connect([
+            (self.spatial_smooth, self.postsmooth_temp_filter, [
+                'smoothed_files', 'in_file'
+            ])
+        ])
+
+        self.workflow.connect([
+            (self.infosource, self.select_files, [('functionals', 'functionals')]),
+            (self.select_files, self.temp_filter, [
+                ('functionals', 'in_file')
+            ]),
+            (self.select_files, self.spatial_smooth, [
+                ('functionals', 'in_files')
+            ])
+        ])
+
+        self.workflow.connect([
+            (self.temp_filter, self.datasink, [
+                ('out_file', 'unsmoothed')
+            ]),
+            (self.postsmooth_temp_filter, self.datasink, [
+                ('out_file', 'smoothed')
+            ])
+        ])
+
+    return self
+
+
+    def run(self, parallel=True, print_header=True, n_procs=8):
+
+        if print_header:
+            print('=' * 30 + 'SUBJECT {}'.format(self.sub_id) + '=' * 30)
+
+        if parallel:
+            self.workflow.run('MultiProc', plugin_args={'n_procs': n_procs})
+        else:
+            self.workflow.run()
+
+        return self
+
+
