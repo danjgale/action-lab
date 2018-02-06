@@ -36,17 +36,13 @@ class GlasserExtractor:
                              " 'r', or 'l' ")
 
 
-    def extract(self, roi_numbers, load=True):
+    def extract(self, roi_numbers):
 
         if isinstance(roi_numbers, int):
             roi_numbers = [roi_numbers]
 
         self.files = []
-        if load:
-            self.masks = {}
-        else:
-            self.masks = None
-
+        self.rois = {}
         for i in self.__hem_list:
 
             hem_dict = {}
@@ -54,18 +50,33 @@ class GlasserExtractor:
 
                 fn = os.path.join(self.roi_dir, '{}_ROI_{}_2mm.nii.gz'.format(i, j))
                 self.files.append(fn)
+                hem_dict[j] = nifti1.load(fn)
 
-                if load:
-                    hem_dict[j] = nifti1.load(fn)
-
-            self.masks[i] = hem_dict
+            self.rois[i] = hem_dict
 
         return self
 
 
+    def binarize(self, threshold=None, inplace=True):
 
+        dict_ = {}
+        for k, v in self.rois.items():
+            tmp_dict = {}
+            for inner_k, inner_v in v.items():
+                tmp_dict[inner_k] = (
+                    nifti1.Nifti1Pair(
+                        binarize_mask_array(inner_v.get_data(), threshold),
+                        inner_v.affine,
+                        inner_v.header
+                    )
+                )
 
+            dict_[k] = tmp_dict
 
+        if inplace:
+            self.rois = dict_
+        else:
+            return dict_
 
 
 # class ROIExtractor:
