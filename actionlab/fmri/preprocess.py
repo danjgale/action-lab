@@ -281,7 +281,6 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
         for i, j in enumerate(image_list)]
 
 
-
 class Filter:
 
     def __init__(self, sub_id, data_dir, functionals, output_dir,
@@ -421,8 +420,6 @@ class Filter:
                 ('out_file', 'smoothed_filtered')
             ])
         ])
-
-
 
     return self
 
