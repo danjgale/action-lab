@@ -235,8 +235,10 @@ class Preprocessor(BaseProcessor):
         return self
 
 
-def convert_fsl_highpass():
-    pass
+def compute_fsl_sigma(cutoff, TR, const=2):
+    """Convert filter cutoff from seconds to sigma required by fslmaths"""
+    return cutoff / (TR*const)
+
 
 def spatially_smooth(input_files, fwhm, output_dir=None):
 
