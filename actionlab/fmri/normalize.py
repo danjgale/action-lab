@@ -17,6 +17,7 @@ from nipype.interfaces import fsl, spm
 from nipype.interfaces.utility import IdentityInterface, Function
 from nilearn.plotting import plot_anat
 
+from base import BaseProcessor
 
 def registration_report(fn, in_file, target, nslices=8,
                         title=None):
@@ -99,30 +100,21 @@ def test_kwargs():
     }
 
 
-class Normalizer:
+class Normalizer(BaseProcessor):
 
-    def __init__(self, sub_id, data_dir, output_dir,
-                 t1, t2, t2_ref, standard='MNI152_T1_2mm_brain.nii.gz'):
-
-        self.sub_id = sub_id
-        self.data_dir = data_dir
-
-        self.output_dir = output_dir
-        self.__working_dir = os.path.join(self.output_dir, 'working')
-        self.__datasink_dir = os.path.join(self.output_dir, 'output')
-
+    def __init__(self, sub_id, t1, t2, t2_ref, output_dir,
+                 standard='MNI152_T1_2mm_brain.nii.gz', zipped=True,
+                 input_file_endswith=None, sorted_input_files=True):
 
         # typically ends with *CNS_SAG_MPRAGE_*.nii.gz
         self.t1 = t1
         self.t2_ref = t2_ref
+        self.t2 = t2
 
-        if isinstance(t2, str):
-            self.t2 = [os.path.join(os.path.join(t2), i)
-                       for i in os.listdir(os.path.join(self.data_dir, self.sub_id, t2))
-                       if 'nii' in i]
-        else:
-            # assume as list (to be specified in docs)
-            self.t2 = t2
+        #  *** Note that t2 is input data ***
+        BaseProcessor.__init__(self, sub_id, self.t2, output_path, zipped,
+                               input_file_endswith,
+                               sorted_input_files=sorted_input_files)
 
         self.standard = fsl.Info.standard_image(standard)
 
@@ -131,7 +123,7 @@ class Normalizer:
 
     def build_nonlinear(self, parameterize_output=False, t2_t1_dof=12,
                         t2_t1_bins=None, t1_mni_dof=12, t1_mni_bins=None,
-                        fnirt_kwargs=None):
+                        fnirt_kwargs=None, workflow_name='nonlinear_normalize'):
 
         self.__is_nonlinear = True
         self.parameterize_output = parameterize_output
@@ -142,24 +134,6 @@ class Normalizer:
         self.fnirt_kwargs = fnirt_kwargs
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
-
-        # setup subject's data folder
-        self.__sub_output_dir = os.path.join(
-            self.__datasink_dir,
-            self.sub_id
-        )
-        if not os.path.exists(self.__sub_output_dir):
-            os.makedirs(self.__sub_output_dir)
-
-        self.datasink = Node(
-            DataSink(
-                base_directory=self.__datasink_dir,
-                container=self.__sub_output_dir,
-                substitutions=[('_subject_id_', ''), ('sub_id_', '')],
-                parameterization=self.parameterize_output
-            ),
-            name='datasink'
-        )
 
         # ---------------------------------------------------------------------
         # ANATOMICAL NORMALIZATION SUBFLOW
@@ -182,7 +156,7 @@ class Normalizer:
 
         self.anat_files = Node(
             SelectFiles(
-                {'t1': os.path.join(self.data_dir, self.sub_id, '{t1}'),
+                {'t1': '{t1}'),
                   'standard': self.standard}
             ),
             name='anat_files'
@@ -257,13 +231,13 @@ class Normalizer:
             ),
             name='infosource'
         )
-        self.infosource.iterables = [('t2_files', self.t2)]
+        self.infosource.iterables = [('t2_files', self.__input_files)]
 
         self.select_files = Node(
             SelectFiles(
-                {'t1': os.path.join(self.data_dir, self.sub_id, self.t1),
-                 't2_ref': os.path.join(self.data_dir, self.sub_id, self.t2_ref),
-                 't2_files': os.path.join(self.data_dir, self.sub_id, '{t2_files}'),
+                {'t1': self.t1,
+                 't2_ref': self.t2_ref,
+                 't2_files': '{t2_files}',
                  'standard': self.standard}
             ),
             name='select_files'
@@ -277,7 +251,6 @@ class Normalizer:
 
         self.normalize_func = MapNode(fsl.ApplyWarp(), name='normalize_func',
                                       iterfield=['in_file'])
-
         self.normalize_motion_ref = Node(fsl.ApplyWarp(), name='normalize_motion_ref')
 
         # intra-norm/coreg nodes
@@ -334,7 +307,7 @@ class Normalizer:
         # META-FLOW
         # ---------
 
-        self.workflow = Workflow('nonlinear_normalize')
+        self.workflow = Workflow(workflow_name)
         self.workflow.base_dir = self.__working_dir
 
         self.workflow.connect([
@@ -347,8 +320,8 @@ class Normalizer:
         return self
 
 
-    def build_linear(self, parameterize_output=False, t2_t1_dof=12,
-                        t2_t1_bins=None, t1_mni_dof=12, t1_mni_bins=None):
+    def build_linear(self, t2_t1_dof=12, t2_t1_bins=None, t1_mni_dof=12,
+                     t1_mni_bins=None, workflow_name='linear_normalize'):
 
         self.__is_nonlinear = False
         self.parameterize_output = parameterize_output
@@ -356,9 +329,10 @@ class Normalizer:
         self.t2_t1_bins = t2_t1_bins
         self.t1_mni_dof = t1_mni_dof
         self.t1_mni_bins = t1_mni_bins
+        self.workflow_name = workflow_name
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
-        self.workflow = Workflow(name='linear_normalize')
+        self.workflow = Workflow(name=workflow_name)
         self.workflow.base_dir = self.__working_dir
 
         # ----------
@@ -371,39 +345,16 @@ class Normalizer:
             ),
             name='infosource'
         )
-        self.infosource.iterables = [('t2_files', self.t2)]
+        self.infosource.iterables = [('t2_files', self.__input_files)]
 
         self.select_files = Node(
             SelectFiles(
-                {'t1': os.path.join(self.data_dir, self.sub_id, self.t1),
-                 't2_ref': os.path.join(self.data_dir, self.sub_id, self.t2_ref),
-                 't2_files': os.path.join(self.data_dir, self.sub_id, '{t2_files}'),
+                {'t1': self.t1,
+                 't2_ref': self.t2_ref,
+                 't2_files': '{t2_files}',
                  'standard': self.standard}
             ),
             name='select_files'
-        )
-
-        # -----------
-        # Data Output
-        # -----------
-
-        # setup subject's data folders
-        self.__sub_output_dir = os.path.join(
-            self.__datasink_dir,
-            self.sub_id
-        )
-
-        if not os.path.exists(self.__sub_output_dir):
-            os.makedirs(self.__sub_output_dir)
-
-        self.datasink = Node(
-            DataSink(
-                base_directory=self.__datasink_dir,
-                container=self.__sub_output_dir,
-                substitutions=[('_subject_id_', ''), ('sub_id_', '')],
-                parameterization=self.parameterize_output
-            ),
-            name='datasink'
         )
 
         # -------------------
@@ -513,7 +464,7 @@ class Normalizer:
         if not os.path.exists(self.__report_dir):
             os.makedirs(self.__report_dir)
 
-        raw_t1 = _get_file(os.path.join(self.data_dir, self.sub_id, 'anatomical'))
+        raw_t1 = _get_file(self.t1)
         coreg_t2 = _get_file(os.path.join(self.__sub_output_dir, 'registered'))
         normed_t1 = _get_file(os.path.join(self.__sub_output_dir, 'normalized/anat'))
         normed_t2 = _get_file(os.path.join(self.__sub_output_dir, 'normalized/motion_ref'))
