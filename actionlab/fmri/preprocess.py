@@ -347,7 +347,7 @@ class Filter:
 
         self.select_files = Node(
             SelectFiles(
-                {'funct': os.path.join(self.data_dir, self.sub_id, '{functionals}'))}
+                {'funct': os.path.join(self.data_dir, self.sub_id, '{functionals}')}
             ),
             name='select_files'
         )
@@ -382,9 +382,9 @@ class Filter:
         # nodes for unsmoothed data pipeline
         self.temp_filter = Node(
             fsl.maths.TemporalFilter(
-                highpass_sigma = self.highpass
+                highpass_sigma = self.highpass,
                 output_type='NIFTI',
-            )
+            ),
             name='presmooth_temp_filter',
             iterables='in_file'
         )
@@ -407,9 +407,9 @@ class Filter:
 
             self.postsmooth_temp_filter = Node(
                 fsl.maths.TemporalFilter(
-                    highpass_sigma = self.highpass
+                    highpass_sigma = self.highpass,
                     output_type='NIFTI',
-                )
+                ),
                 name='postsmooth_temp_filter'
             )
 
@@ -460,7 +460,7 @@ class Filter:
                     ])
                 ])
 
-    return self
+        return self
 
 
     def run(self, parallel=True, print_header=True, n_procs=8):
