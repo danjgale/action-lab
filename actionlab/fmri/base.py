@@ -36,11 +36,14 @@ class BaseProcessor:
     input_file_endswith: str, optional
         If input_data is a directory and only a subset of NiFTI files are of
         interest, this specifies a pattern that marks those files.
+    datasink: obj
+        Nipype Datasink object.
 
     """
 
     def __init__(self, sub_id, input_data, output_path, zipped=True,
-                 input_file_endswith=None):
+                 input_file_endswith=None, datasink_parameterization=False,
+                 sorted_input_files=True):
 
         self.sub_id = sub_id
         self.zipped = zipped
@@ -59,7 +62,28 @@ class BaseProcessor:
         elif isinstance(self.input_data, list):
             self.__input_files = input_data
 
+        if not sorted_input_files:
+            # no guarantees this works for all cases...
+            self.__input_files = sorted(self.__input_files)
 
         self.output_dir = output_dir
         self.__working_dir =  os.path.join(self.output_dir, 'working')
         self.__datasink_dir = os.path.join(self.output_dir, 'output')
+        self.__sub_output_dir = os.path.join(
+            self.__datasink_dir,
+            self.sub_id
+        )
+
+        if not os.path.exists(self.__sub_output_dir):
+            os.makedirs(self.__sub_output_dir)
+
+        # Set up datasink
+        self.datasink = Node(
+            DataSink(
+                base_directory=self.__datasink_dir,
+                container=self.__sub_output_dir,
+                substitutions=[('_subject_id_', ''), ('sub_id_', '')],
+                parameterization=datasink_parameterization
+            ),
+            name='datasink'
+        )
