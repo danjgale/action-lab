@@ -5,7 +5,7 @@ connect to SPM and FSL.
 import os
 import sys
 import argparse
-import numpy as np
+import glob
 import nipype
 from nipype import logging
 from nipype.pipeline.engine import Workflow, Node, MapNode
@@ -17,29 +17,19 @@ from nipype.algorithms.misc import Gunzip
 from nilearn.image import smooth_img
 from nibabel import nifti1
 
+from .base import BaseProcessor
 
-class Preprocessor:
 
-    def __init__(self, sub_id, data_dir, functionals, output_dir,
-                 anatomical='*CNS_SAG_MPRAGE_*.nii.gz',
-                 prepend_functional_path=None):
+class Preprocessor(BaseProcessor):
 
-        self.sub_id = sub_id
-        self.data_dir = data_dir
+    def __init__(self, sub_id, input_data, anatomical, output_path, zipped=True,
+                 input_file_endswith=None, sort_input_files=True):
 
-        if prepend_functional_path is not None:
-            # add prepended path (full path required if not present)
-            self.functionals = [os.path.join(prepend_functional_path, i) for i in functionals]
-        else:
-            # assumes that full path is already there
-            self.functionals = functionals
-
-        self.output_dir = output_dir
-        self.__working_dir =  os.path.join(self.output_dir, 'working')
-        self.__datasink_dir = os.path.join(self.output_dir, 'output')
+        BaseProcessor.__init__(self, sub_id, input_data, output_path, zipped,
+                               input_file_endswith,
+                               sort_input_files=sort_input_files)
 
         self.anatomical = anatomical
-
 
 
     @staticmethod
@@ -53,22 +43,22 @@ class Preprocessor:
             iterfield='in_file'
         )
 
-    def build(self, TR, parameterize_output=False, bet_center=None, fwhm=5.0,
-              skullstrip_frac=0.5, skullstrip_gradient=0,
-              motion_ref_volume=4):
+    def build(self, TR, fwhm=5.0, bet_center=None, bet_frac=0.5, bet_gradient=0,
+              motion_ref_volume=4, workflow_name='preprocessing'):
 
         self.TR = TR
         self.bet_center = bet_center # x y z in voxel coordinates
         self.fwhm = fwhm
-        self.skullstrip_frac = skullstrip_frac
-        self.skullstrip_gradient = skullstrip_gradient
+        self.bet_frac = bet_frac
+        self.bet_gradient = bet_gradient
         self.parameterize_output = parameterize_output
         self.motion_ref_volume = motion_ref_volume
+        self.workflow_name = workflow_name
 
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
-        self.workflow = Workflow(name='preprocessing')
-        self.workflow.base_dir = self.__working_dir
+        self.workflow = Workflow(name=self.workflow_name)
+        self.workflow.base_dir = self._working_dir
 
         # ----------
         # Data Input
@@ -76,47 +66,13 @@ class Preprocessor:
 
         self.infosource = Node(
             IdentityInterface(
-                fields=['sub_id', 'functionals', 'anatomical', 'first_funct']
+                fields=['funct', 'anat', 'first_funct']
             ),
             name='infosource'
         )
-        self.infosource.inputs.sub_id = self.sub_id
-        self.infosource.inputs.anatomical = self.anatomical
-        self.infosource.inputs.first_funct = self.functionals[0]
-        self.infosource.iterables = [('functionals', self.functionals)]
-
-
-        self.select_files = Node(
-            SelectFiles(
-                {'funct': os.path.join(self.data_dir, '{sub_id}/{functionals}'),
-                 'anat': os.path.join(self.data_dir, '{sub_id}/{anatomical}'),
-                 'first_funct': os.path.join(self.data_dir, '{sub_id}/{first_funct}')}
-            ),
-            name='select_files'
-        )
-
-        # -----------
-        # Data Output
-        # -----------
-
-        # setup subject's data folder
-        self.__sub_output_dir = os.path.join(
-            self.__datasink_dir,
-            self.sub_id
-        )
-
-        if not os.path.exists(self.__sub_output_dir):
-            os.makedirs(self.__sub_output_dir)
-
-        self.datasink = Node(
-            DataSink(
-                base_directory=self.__datasink_dir,
-                container=self.__sub_output_dir,
-                substitutions=[('_subject_id_', ''), ('sub_id_', '')],
-                parameterization=self.parameterize_output
-            ),
-            name='datasink'
-        )
+        self.infosource.inputs.anat = self.anatomical
+        self.infosource.inputs.first_funct = self._input_files[0]
+        self.infosource.iterables = [('funct', self._input_files)]
 
         # -----------------
         # Motion Correction
@@ -130,13 +86,12 @@ class Preprocessor:
             name='motion_ref'
         )
 
-        self.motion_correction = MapNode(
+        self.motion_correction = Node(
             fsl.MCFLIRT(
                 cost='mutualinfo',
                 save_plots=True
             ),
-            name='motion',
-            iterfield='in_file'
+            name='motion'
         )
 
         self.plot_disp = self._get_motion_params('displacement', 'disp_plot')
@@ -147,25 +102,23 @@ class Preprocessor:
         # Slice Time Correction
         # ---------------------
 
-        self.slicetime = MapNode(
+        self.slicetime = Node(
             fsl.SliceTimer(
                 interleaved=True,
                 time_repetition=self.TR,
                 output_type='NIFTI' # for SPM
             ),
-            iterfield='in_file',
-            name='slicetime'
+            iterfield='in_file'
         )
 
         # -----------------
         # Spatial Smoothing
         # -----------------
 
-        self.smooth = MapNode(
+        self.smooth = Node(
             spm.Smooth(
                 fwhm=self.fwhm
             ),
-            iterfield='in_files',
             name='smooth'
         )
 
@@ -177,8 +130,8 @@ class Preprocessor:
             fsl.BET(
                 robust=True,
                 mask=True,
-                frac=self.skullstrip_frac,
-                vertical_gradient=self.skullstrip_gradient,
+                frac=self.bet_frac,
+                vertical_gradient=self.bet_gradient,
             ),
             name='skullstrip'
         )
@@ -212,9 +165,9 @@ class Preprocessor:
         # ---------------
 
         # make class methods for same reason as above
-        self.selectfiles_to_skullstrip = [('anat', 'in_file')]
-        self.selectfiles_to_motion_ref = [('first_funct', 'in_file')]
-        self.select_files_to_motion_correction = [('funct', 'in_file')]
+        self.infosource_to_skullstrip = [('anat', 'in_file')]
+        self.infosource_to_motion_ref = [('first_funct', 'in_file')]
+        self.infosource_to_motion_correction = [('funct', 'in_file')]
 
         self.motion_ref_to_datasink = [('roi_file', 'motion_corrected.ref')]
         self.skullstrip_to_datasink = [
@@ -233,17 +186,11 @@ class Preprocessor:
 
 
         self.workflow.connect([
-            (self.infosource, self.select_files, [
-                ('sub_id', 'sub_id'),
-                ('functionals', 'functionals'),
-                ('anatomical', 'anatomical'),
-                ('first_funct', 'first_funct'),
-            ]),
             # inputs
-            (self.select_files, self.skullstrip, self.selectfiles_to_skullstrip),
-            (self.select_files, self.motion_ref, self.selectfiles_to_motion_ref),
-            (self.select_files, self.motion_correction,
-             self.select_files_to_motion_correction),
+            (self.infosource, self.skullstrip, self.infosource_to_skullstrip),
+            (self.infosource, self.motion_ref, self.infosource_to_motion_ref),
+            (self.infosource, self.motion_correction,
+             self.infosource_to_motion_correction),
             # outputs
             (self.motion_ref, self.datasink, self.motion_ref_to_datasink),
             (self.skullstrip, self.datasink, self.skullstrip_to_datasink),
@@ -270,6 +217,11 @@ class Preprocessor:
         return self
 
 
+def compute_fsl_sigma(cutoff, TR, const=2):
+    """Convert filter cutoff from seconds to sigma required by fslmaths"""
+    return cutoff / (TR*const)
+
+
 def spatially_smooth(input_files, fwhm, output_dir=None):
 
     image_list = [smooth_img(i, fwhm) for i in input_files]
@@ -281,55 +233,30 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
         for i, j in enumerate(image_list)]
 
 
-class Filter:
+class Filter(BaseProcessor):
 
-    def __init__(self, sub_id, data_dir, functionals, output_dir,
-                 prepend_functional_path=None, zipped=True, smooth=True):
+    def __init__(self, sub_id, input_data, output_path, zipped=True, smooth=True,
+                 input_file_endswith=None, sort_input_files=True):
         """Spatially and temporally filter data using a separate workflow
 
         Using a separate workflow permits spatial/temporal filtering after
         normalization (i.e. an SPM-style workflow).
         """
 
-        self.sub_id = sub_id
-        self.data_dir = data_dir
-        self.zipped = zipped
-
-        if self.zipped:
-            file_extension = '.nii.gz'
-        else:
-            file_extension = '.nii'
-
-        if isinstance(functionals, str):
-            self.functionals = [os.path.join(os.path.join(functionals), i)
-                       for i in os.listdir(os.path.join(self.data_dir, self.sub_id, functionals))
-                       if i.endswith(file_extension)]
-        else:
-            # assume as list (to be specified in docs)
-            self.functionals = functionals
-
-
+        BaseProcessor.__init__(self, sub_id, input_data, output_path, zipped,
+                               input_file_endswith,
+                               sort_input_files=sort_input_files)
         self.smooth = smooth
 
-        self.output_dir = output_dir
-        self.__working_dir =  os.path.join(self.output_dir, 'working')
-        self.__datasink_dir = os.path.join(self.output_dir, 'output')
 
-    def build(self, fwhm=[5, 5, 5], highpass=100, TR=2, highpass_units='secs',
-              workflow_name='filter'):
+    def build(self, fwhm=[5, 5, 5], highpass=100, TR=2, workflow_name='filter'):
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
         self.workflow = Workflow(name=workflow_name)
-        self.workflow.base_dir = self.__working_dir
+        self.workflow.base_dir = self._working_dir
 
         self.fwhm = fwhm
-
-        if highpass_units == 'secs':
-            self.highpass = highpass / 2
-        elif highpass_units == 'vols':
-            self.highpass = highpass
-        else:
-            raise ValueError("Value for highpass_units must be either 'secs' or 'vols'")
+        self.highpass_sigma = compute_fsl_sigma(highpass, TR)
 
         # ----------
         # Data Input
@@ -337,43 +264,11 @@ class Filter:
 
         self.infosource = Node(
             IdentityInterface(
-                fields=['sub_id', 'functionals']
+                fields=['functionals']
             ),
             name='infosource'
         )
-        self.infosource.inputs.sub_id = self.sub_id
-        self.infosource.iterables = [('functionals', self.functionals)]
-
-
-        self.select_files = Node(
-            SelectFiles(
-                {'funct': os.path.join(self.data_dir, self.sub_id, '{functionals}')}
-            ),
-            name='select_files'
-        )
-
-        # -----------
-        # Data Output
-        # -----------
-
-        # setup subject's data folder
-        self.__sub_output_dir = os.path.join(
-            self.__datasink_dir,
-            self.sub_id
-        )
-
-        if not os.path.exists(self.__sub_output_dir):
-            os.makedirs(self.__sub_output_dir)
-
-        self.datasink = Node(
-            DataSink(
-                base_directory=self.__datasink_dir,
-                container=self.__sub_output_dir,
-                substitutions=[('_subject_id_', ''), ('sub_id_', '')],
-                parameterization=self.parameterize_output
-            ),
-            name='datasink'
-        )
+        self.infosource.iterables = [('functionals', self._input_files)]
 
         # -----------------------
         # Basic Filtering Workflow
@@ -382,16 +277,14 @@ class Filter:
         # nodes for unsmoothed data pipeline
         self.temp_filter = Node(
             fsl.maths.TemporalFilter(
-                highpass_sigma = self.highpass,
+                highpass_sigma = self.highpass_sigma,
                 output_type='NIFTI',
             ),
-            name='presmooth_temp_filter',
-            iterables='in_file'
+            name='temp_filter'
         )
 
         self.workflow.connect([
-            (self.infosource, self.select_files, [('functionals', 'functionals')]),
-            (self.select_files, self.temp_filter, [
+            (self.infosource, self.temp_filter, [
                 ('functionals', 'in_file')
             ]),
             (self.temp_filter, self.datasink, [
@@ -407,7 +300,7 @@ class Filter:
 
             self.postsmooth_temp_filter = Node(
                 fsl.maths.TemporalFilter(
-                    highpass_sigma = self.highpass,
+                    highpass_sigma = self.highpass_sigma,
                     output_type='NIFTI',
                 ),
                 name='postsmooth_temp_filter'
@@ -416,7 +309,6 @@ class Filter:
             if self.zipped:
                 self.gunzip = Node(
                     Gunzip(),
-                    iterables='in_file',
                     name='gunzip'
                 )
                 self.spatial_smooth = Node(
@@ -426,7 +318,7 @@ class Filter:
                     name='spatial_smooth',
                 )
                 self.workflow.connect([
-                    (self.select_files, self.gunzip, [
+                    (self.infosource, self.gunzip, [
                         ('functionals', 'in_file')
                     ]),
                     (self.gunzip, self.spatial_smooth, [
@@ -445,11 +337,10 @@ class Filter:
                     spm.Smooth(
                         fwhm=self.fwhm
                     ),
-                    name='spatial_smooth',
-                    iterables='in_file'
+                    name='spatial_smooth'
                 )
                 self.workflow.connect([
-                    (self.select_files, self.spatial_smooth, [
+                    (self.infosource, self.spatial_smooth, [
                         ('functionals', 'in_files')
                     ]),
                     (self.spatial_smooth, self.postsmooth_temp_filter, [
