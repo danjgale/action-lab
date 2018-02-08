@@ -1,7 +1,11 @@
 """Base class for processing subclasses"""
 
 
-class BaseProcessor:
+import os
+from nipype.interfaces.io import DataSink
+from nipype.pipeline.engine import Node
+
+class BaseProcessor(object):
 
     """ Base class to set up input/outputs for subclasses.
 
@@ -43,9 +47,10 @@ class BaseProcessor:
 
     def __init__(self, sub_id, input_data, output_path, zipped=True,
                  input_file_endswith=None, datasink_parameterization=False,
-                 sorted_input_files=True):
+                 sort_input_files=True):
 
         self.sub_id = sub_id
+        self.input_data = input_data
         self.zipped = zipped
 
         if input_file_endswith is None:
@@ -56,32 +61,32 @@ class BaseProcessor:
         # set up input files, which are a list of file names to be used by
         # the SelectFiles interface
         if isinstance(self.input_data, str):
-            self.__input_files = [os.path.join(input_data, i)
+            self._input_files = [os.path.join(input_data, i)
                                for i in os.listdir(input_data)
                                if i.endswith(input_file_endswith)]
         elif isinstance(self.input_data, list):
-            self.__input_files = input_data
+            self._input_files = self.input_data
 
-        if not sorted_input_files:
+        if sort_input_files:
             # no guarantees this works for all cases...
-            self.__input_files = sorted(self.__input_files)
+            self._input_files = sorted(self._input_files)
 
-        self.output_dir = output_dir
-        self.__working_dir =  os.path.join(self.output_dir, 'working')
-        self.__datasink_dir = os.path.join(self.output_dir, 'output')
-        self.__sub_output_dir = os.path.join(
-            self.__datasink_dir,
+        self.output_path = output_path
+        self._working_dir =  os.path.join(self.output_path, 'working')
+        self._datasink_dir = os.path.join(self.output_path, 'output')
+        self._sub_output_dir = os.path.join(
+            self._datasink_dir,
             self.sub_id
         )
 
-        if not os.path.exists(self.__sub_output_dir):
-            os.makedirs(self.__sub_output_dir)
+        if not os.path.exists(self._sub_output_dir):
+            os.makedirs(self._sub_output_dir)
 
         # Set up datasink
         self.datasink = Node(
             DataSink(
-                base_directory=self.__datasink_dir,
-                container=self.__sub_output_dir,
+                base_directory=self._datasink_dir,
+                container=self._sub_output_dir,
                 substitutions=[('_subject_id_', ''), ('sub_id_', '')],
                 parameterization=datasink_parameterization
             ),
