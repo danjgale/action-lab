@@ -17,7 +17,7 @@ from nipype.interfaces import fsl, spm
 from nipype.interfaces.utility import IdentityInterface, Function
 from nilearn.plotting import plot_anat
 
-from base import BaseProcessor
+from .base import BaseProcessor
 
 def registration_report(fn, in_file, target, nslices=8,
                         title=None):
@@ -156,7 +156,7 @@ class Normalizer(BaseProcessor):
 
         self.anat_files = Node(
             SelectFiles(
-                {'t1': '{t1}'),
+                {'t1': '{t1}',
                   'standard': self.standard}
             ),
             name='anat_files'
