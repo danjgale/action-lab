@@ -20,20 +20,10 @@ def binarize_mask_array(x, threshold=None):
 
 class GlasserExtractor:
 
-    def __init__(self, roi_dir, hemisphere='bilateral'):
+    def __init__(self, roi_dir, hemisphere):
 
         self.roi_dir = roi_dir
         self.hemisphere = hemisphere
-
-        if self.hemisphere == 'bilateral':
-            self.__hem_list = ['L', 'R']
-        elif self.hemisphere == 'r':
-            self.__hem_list = ['R']
-        elif self.hemisphere == 'l':
-            self.__hem_list = ['L']
-        else:
-            raise ValueError("Hemisphere argument must be either 'bilateral',"
-                             " 'r', or 'l' ")
 
 
     def extract(self, roi_numbers):
@@ -43,16 +33,13 @@ class GlasserExtractor:
 
         self.files = []
         self.rois = {}
-        for i in self.__hem_list:
 
-            hem_dict = {}
-            for j in roi_numbers:
+        for i in roi_numbers:
 
-                fn = os.path.join(self.roi_dir, '{}_ROI_{}_2mm.nii.gz'.format(i, j))
-                self.files.append(fn)
-                hem_dict[j] = nifti1.load(fn)
-
-            self.rois[i] = hem_dict
+            fn = os.path.join(
+                self.roi_dir, '{}_ROI_{}_2mm.nii.gz'.format(self.hemisphere, i))
+            self.files.append(fn)
+            self.rois[i] = nifti1.load(fn)
 
         return self
 
@@ -61,17 +48,11 @@ class GlasserExtractor:
 
         dict_ = {}
         for k, v in self.rois.items():
-            tmp_dict = {}
-            for inner_k, inner_v in v.items():
-                tmp_dict[inner_k] = (
-                    nifti1.Nifti1Pair(
-                        binarize_mask_array(inner_v.get_data(), threshold),
-                        inner_v.affine,
-                        inner_v.header
-                    )
-                )
-
-            dict_[k] = tmp_dict
+            dict_[k] = nifti1.Nifti1Pair(
+                binarize_mask_array(v.get_data(), threshold),
+                v.affine,
+                v.header
+            )
 
         if inplace:
             self.rois = dict_
