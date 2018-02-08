@@ -14,6 +14,7 @@ from nipype.interfaces.base import Bunch
 from nipype.algorithms.modelgen import SpecifyModel, SpecifySPMModel
 from nipype.interfaces.utility import IdentityInterface
 
+from .base import BaseProcessor
 
 def bunch_protocols(protocol, nruns, condition_col):
     """Create bunch object (event, start, duration, amplitudes) for
@@ -53,25 +54,20 @@ def bunch_protocols(protocol, nruns, condition_col):
     return bunches
 
 
-class GLM:
+class GLM(BaseProcessor):
 
-    def __init__(self, sub_id, data_dir, output_dir):
-
-        self.sub_id = sub_id
-        self.data_dir = data_dir
-        self.__working_dir = os.path.abspath(
-            os.path.join(self.output_dir, 'working')
-        )
-        self.__datasink_dir = os.path.abspath(
-            os.path.join(self.output_dir, 'output')
-        )
-
-        
+    def __init__(self, sub_id, input_data, output_path, zipped=True,
+                 input_file_endswith=None, sort_input_files=True):
 
 
-    def build(self, protocol_file, contrasts, runs, run_template,
-              realign_template, parameterize_output=False,
-              output_dir=None):
+        BaseProcessor.__init__(self, sub_id, input_data, output_path, zipped,
+                               input_file_endswith,
+                               sort_input_files=sort_input_files,
+                               datasink_parameterization=True)
+
+
+    def build(self, protocol_file, contrasts, realign_params, output_path=None,
+              workflow_name='glm'):
 
         # note that this concatenates runs, so for a typical experiment in which
         # all runs have the same conditions but in different orders, you input
@@ -81,26 +77,17 @@ class GLM:
         # build sets workflow for individual runs (with different protocols)
         self.protocol_file = protocol_file
         self.contrasts = contrasts
-        self.run_template = run_template
-        self.realign_params = realign_params
-        self.realign_template = realign_template
-        self.runs = runs
-        self.parameterize_output = parameterize_output
+        self.realign_params = realign_params # must be in same order as runs
 
-        if output_dir is not None:
+
+        if output_path is not None:
             # update data sink directory for a specific build
-            self.__datasink_dir = os.path.abspath(
-                os.path.join(output_dir, 'output')
+            self._datasink_dir = os.path.abspath(
+                os.path.join(output_path, 'output')
             )
-
-            self.__working_dir = os.path.abspath(
-                os.path.join(output_dir, 'working')
+            self._working_dir = os.path.abspath(
+                os.path.join(output_path, 'working')
             )
-
-
-        self.__input_runs = [run_template.format(run=i) for i in self.runs]
-        self.__realign = [run_template.format(run=i) for i in self.runs]
-
 
         # ----------
         # Data Input
@@ -108,47 +95,18 @@ class GLM:
 
         self.infosource = Node(
             IdentityInterface(
-                fields=['selected_runs', 'realign_params']
+                fields=['funct', 'realign_params']
             ),
             name='infosource'
         )
-        self.infosource.selected_runs = self.__input_runs
-        self.infosource.realign_params = self.__realign
-
-        self.select_files = Node(
-            SelectFiles(
-                {'runs': '{selected_runs}',
-                 'realignment_parameters': '{realign_params}'},
-                name='select_files'
-            )
-        )
+        self.infosource.funct = self._input_files
+        self.infosource.realign_params = self.realign_params
 
         # -----------
-        # Data Output
+        # Model Nodes
         # -----------
 
-        # setup subject's data folder
-        self.__sub_output_dir = os.path.join(
-            self.__datasink_dir,
-            self.sub_id
-        )
-
-        if not os.path.exists(self.__sub_output_dir):
-            os.makedirs(self.__sub_output_dir)
-
-        self.datasink = Node(
-            DataSink(
-                base_dir=self.__datasink_dir,
-                container=self.__sub_output_dir,
-                substitutions=[('_subject_id_', ''), ('sub_id_', '')],
-                parameterization=self.parameterize_output
-            ),
-            name='datasink'
-        )
-
-        # initialize model nodes
         self.sub_info = bunch_protocols(protocol_file, len(run_num))
-
 
         self.model_spec = Node(
             SpecifySPMModel(
@@ -186,7 +144,7 @@ class GLM:
 
 
         self.workflow=Workflow(name = 'glm')
-        self.workflow.base_dir = self.__working_dir
+        self.workflow.base_dir = self._working_dir
 
         # intra-modelling flow
         self.workflow.connect([
@@ -201,13 +159,9 @@ class GLM:
 
         # input and output flow
         self.workflow.connect([
-            (self.infosource, self.select_files, [
-                ('selected_runs', 'selected_runs'),
-                ('realign_params', 'realign_params')
-            ]),
-            (self.select_files, self.model_spec, [
-                ('runs', 'functional_runs'),
-                ('realignment_parameters', 'realignment_parameters')
+            (self.infosource, self.model_spec, [
+                ('funct', 'functional_runs'),
+                ('realign_parameters', 'realignment_parameters')
             ]),
             (self.design, self.datasink, [('spm_mat_file', 'model.pre-estimate')]),
             (self.model_est, self.datasink, [
