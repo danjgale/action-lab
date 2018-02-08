@@ -17,18 +17,18 @@ from nipype.algorithms.misc import Gunzip
 from nilearn.image import smooth_img
 from nibabel import nifti1
 
-from base import BaseProcessor
+from .base import BaseProcessor
 
 
 class Preprocessor(BaseProcessor):
 
     def __init__(self, sub_id, input_data, output_path,
                  anatomical='*CNS_SAG_MPRAGE_*.nii.gz', zipped=True,
-                 input_file_endswith=None, sorted_input_files=True):
+                 input_file_endswith=None, sort_input_files=True):
 
         BaseProcessor.__init__(self, sub_id, input_data, output_path, zipped,
                                input_file_endswith,
-                               sorted_input_files=sorted_input_files)
+                               sort_input_files=sort_input_files)
 
         self.anatomical = anatomical
 
@@ -59,7 +59,7 @@ class Preprocessor(BaseProcessor):
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
         self.workflow = Workflow(name=self.workflow_name)
-        self.workflow.base_dir = self.__working_dir
+        self.workflow.base_dir = self._working_dir
 
         # ----------
         # Data Input
@@ -72,8 +72,8 @@ class Preprocessor(BaseProcessor):
             name='infosource'
         )
         self.infosource.inputs.anatomical = self.anatomical
-        self.infosource.inputs.first_funct = self.__input_files[0]
-        self.infosource.iterables = [('functionals', self.__input_files)]
+        self.infosource.inputs.first_funct = self._input_files[0]
+        self.infosource.iterables = [('functionals', self._input_files)]
 
         self.select_files = Node(
             SelectFiles(
@@ -253,8 +253,8 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
 
 class Filter(BaseProcessor):
 
-    def __init__(self, sub_id, input_data, output_path, zipped=True, smooth=True
-                 input_file_endswith=None, sorted_input_files=True):
+    def __init__(self, sub_id, input_data, output_path, zipped=True, smooth=True,
+                 input_file_endswith=None, sort_input_files=True):
         """Spatially and temporally filter data using a separate workflow
 
         Using a separate workflow permits spatial/temporal filtering after
@@ -263,17 +263,18 @@ class Filter(BaseProcessor):
 
         BaseProcessor.__init__(self, sub_id, input_data, output_path, zipped,
                                input_file_endswith,
-                               sorted_input_files=sorted_input_files)
+                               sort_input_files=sort_input_files)
         self.smooth = smooth
+
 
     def build(self, fwhm=[5, 5, 5], highpass=100, TR=2, workflow_name='filter'):
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
         self.workflow = Workflow(name=workflow_name)
-        self.workflow.base_dir = self.__working_dir
+        self.workflow.base_dir = self._working_dir
 
         self.fwhm = fwhm
-        self.highpass = convert_fsl_highpass(highpass)
+        self.highpass_sigma = compute_fsl_sigma(highpass, TR)
 
         # ----------
         # Data Input
@@ -285,15 +286,7 @@ class Filter(BaseProcessor):
             ),
             name='infosource'
         )
-        self.infosource.iterables = [('functionals', self.__input_files)]
-
-
-        self.select_files = Node(
-            SelectFiles(
-                {'funct': '{functionals}'}
-            ),
-            name='select_files'
-        )
+        self.infosource.iterables = [('functionals', self._input_files)]
 
         # -----------------------
         # Basic Filtering Workflow
@@ -302,16 +295,14 @@ class Filter(BaseProcessor):
         # nodes for unsmoothed data pipeline
         self.temp_filter = Node(
             fsl.maths.TemporalFilter(
-                highpass_sigma = self.highpass,
+                highpass_sigma = self.highpass_sigma,
                 output_type='NIFTI',
             ),
-            name='presmooth_temp_filter',
-            iterables='in_file'
+            name='temp_filter'
         )
 
         self.workflow.connect([
-            (self.infosource, self.select_files, [('functionals', 'functionals')]),
-            (self.select_files, self.temp_filter, [
+            (self.infosource, self.temp_filter, [
                 ('functionals', 'in_file')
             ]),
             (self.temp_filter, self.datasink, [
@@ -327,7 +318,7 @@ class Filter(BaseProcessor):
 
             self.postsmooth_temp_filter = Node(
                 fsl.maths.TemporalFilter(
-                    highpass_sigma = self.highpass,
+                    highpass_sigma = self.highpass_sigma,
                     output_type='NIFTI',
                 ),
                 name='postsmooth_temp_filter'
@@ -336,7 +327,6 @@ class Filter(BaseProcessor):
             if self.zipped:
                 self.gunzip = Node(
                     Gunzip(),
-                    iterables='in_file',
                     name='gunzip'
                 )
                 self.spatial_smooth = Node(
@@ -346,7 +336,7 @@ class Filter(BaseProcessor):
                     name='spatial_smooth',
                 )
                 self.workflow.connect([
-                    (self.select_files, self.gunzip, [
+                    (self.infosource, self.gunzip, [
                         ('functionals', 'in_file')
                     ]),
                     (self.gunzip, self.spatial_smooth, [
@@ -365,11 +355,10 @@ class Filter(BaseProcessor):
                     spm.Smooth(
                         fwhm=self.fwhm
                     ),
-                    name='spatial_smooth',
-                    iterables='in_file'
+                    name='spatial_smooth'
                 )
                 self.workflow.connect([
-                    (self.select_files, self.spatial_smooth, [
+                    (self.infosource, self.spatial_smooth, [
                         ('functionals', 'in_files')
                     ]),
                     (self.spatial_smooth, self.postsmooth_temp_filter, [
