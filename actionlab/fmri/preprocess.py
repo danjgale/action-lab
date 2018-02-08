@@ -5,7 +5,7 @@ connect to SPM and FSL.
 import os
 import sys
 import argparse
-import numpy as np
+import glob
 import nipype
 from nipype import logging
 from nipype.pipeline.engine import Workflow, Node, MapNode
@@ -22,8 +22,7 @@ from .base import BaseProcessor
 
 class Preprocessor(BaseProcessor):
 
-    def __init__(self, sub_id, input_data, output_path,
-                 anatomical='*CNS_SAG_MPRAGE_*.nii.gz', zipped=True,
+    def __init__(self, sub_id, input_data, anatomical, output_path, zipped=True,
                  input_file_endswith=None, sort_input_files=True):
 
         BaseProcessor.__init__(self, sub_id, input_data, output_path, zipped,
@@ -67,22 +66,13 @@ class Preprocessor(BaseProcessor):
 
         self.infosource = Node(
             IdentityInterface(
-                fields=['functionals', 'anatomical', 'first_funct']
+                fields=['funct', 'anat', 'first_funct']
             ),
             name='infosource'
         )
-        self.infosource.inputs.anatomical = self.anatomical
+        self.infosource.inputs.anat = self.anatomical
         self.infosource.inputs.first_funct = self._input_files[0]
-        self.infosource.iterables = [('functionals', self._input_files)]
-
-        self.select_files = Node(
-            SelectFiles(
-                {'funct': '{functionals}',
-                 'anat': '{anatomical}',
-                 'first_funct': '{first_funct}'}
-            ),
-            name='select_files'
-        )
+        self.infosource.iterables = [('funct', self._input_files)]
 
         # -----------------
         # Motion Correction
@@ -96,13 +86,12 @@ class Preprocessor(BaseProcessor):
             name='motion_ref'
         )
 
-        self.motion_correction = MapNode(
+        self.motion_correction = Node(
             fsl.MCFLIRT(
                 cost='mutualinfo',
                 save_plots=True
             ),
-            name='motion',
-            iterfield='in_file'
+            name='motion'
         )
 
         self.plot_disp = self._get_motion_params('displacement', 'disp_plot')
@@ -113,25 +102,23 @@ class Preprocessor(BaseProcessor):
         # Slice Time Correction
         # ---------------------
 
-        self.slicetime = MapNode(
+        self.slicetime = Node(
             fsl.SliceTimer(
                 interleaved=True,
                 time_repetition=self.TR,
                 output_type='NIFTI' # for SPM
             ),
-            iterfield='in_file',
-            name='slicetime'
+            iterfield='in_file'
         )
 
         # -----------------
         # Spatial Smoothing
         # -----------------
 
-        self.smooth = MapNode(
+        self.smooth = Node(
             spm.Smooth(
                 fwhm=self.fwhm
             ),
-            iterfield='in_files',
             name='smooth'
         )
 
@@ -178,9 +165,9 @@ class Preprocessor(BaseProcessor):
         # ---------------
 
         # make class methods for same reason as above
-        self.selectfiles_to_skullstrip = [('anat', 'in_file')]
-        self.selectfiles_to_motion_ref = [('first_funct', 'in_file')]
-        self.select_files_to_motion_correction = [('funct', 'in_file')]
+        self.infosource_to_skullstrip = [('anat', 'in_file')]
+        self.infosource_to_motion_ref = [('first_funct', 'in_file')]
+        self.infosource_to_motion_correction = [('funct', 'in_file')]
 
         self.motion_ref_to_datasink = [('roi_file', 'motion_corrected.ref')]
         self.skullstrip_to_datasink = [
@@ -199,16 +186,11 @@ class Preprocessor(BaseProcessor):
 
 
         self.workflow.connect([
-            (self.infosource, self.select_files, [
-                ('functionals', 'functionals'),
-                ('anatomical', 'anatomical'),
-                ('first_funct', 'first_funct'),
-            ]),
             # inputs
-            (self.select_files, self.skullstrip, self.selectfiles_to_skullstrip),
-            (self.select_files, self.motion_ref, self.selectfiles_to_motion_ref),
-            (self.select_files, self.motion_correction,
-             self.select_files_to_motion_correction),
+            (self.infosource, self.skullstrip, self.infosource_to_skullstrip),
+            (self.infosource, self.motion_ref, self.infosource_to_motion_ref),
+            (self.infosource, self.motion_correction,
+             self.infosource_to_motion_correction),
             # outputs
             (self.motion_ref, self.datasink, self.motion_ref_to_datasink),
             (self.skullstrip, self.datasink, self.skullstrip_to_datasink),
