@@ -60,19 +60,33 @@ class GlasserExtractor:
             return dict_
 
 
-class _VoxelArrayOutput:
+
+class VoxelArrayIO(object):
 
     def __init__(self, name, voxels, labels):
         self.name = name
         self.voxels = voxels.tolist()
         self.labels = labels
 
-    def save(self, fn):
+
+    def to_json(self, fn):
         with open(fn, 'w') as f:
             json.dump(self.__dict__, f, sort_keys=True, indent=2)
 
 
-class VoxelArray:
+    def from_json(self):
+        pass
+
+
+    def to_pickle(self):
+        pass
+
+
+    def from_pickle(self):
+        pass
+
+
+class VoxelArray(object):
 
     def __init__(self, fn=None):
 
@@ -106,6 +120,8 @@ class VoxelArray:
 
         self.name = name
 
+    return self
+
 
     def load(self, fn):
 
@@ -115,6 +131,8 @@ class VoxelArray:
         self.voxels = np.array(input_json['voxels'])
         self.labels = input_json['labels']
         self.name = input_json['name']
+
+    return self
 
 
     def label(self, time_labels, label_column):
@@ -132,6 +150,8 @@ class VoxelArray:
 
         self.labels = pd.concat([i[['roi', 'run', label_column]] for i in self.__time_labels])
 
+    return self
+
 
     def to_dataframe(self):
 
@@ -143,6 +163,8 @@ class VoxelArray:
     def save(self, fn):
         output = _VoxelArrayOutput(self.name, self.voxels, self.labels)
         output.save(fn)
+
+    return self
 
 
 # class ROIExtractor:
