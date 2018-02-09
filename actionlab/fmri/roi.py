@@ -7,6 +7,7 @@ import re
 import subprocess
 import json
 import numpy as np
+import pandas as pd
 import nilearn
 from nilearn.input_data import NiftiMasker, MultiNiftiMasker
 from nibabel import nifti1
@@ -66,7 +67,7 @@ class _VoxelArrayIO(object):
     def __init__(self, name, voxels, labels):
         self.name = name
         self.voxels = voxels.tolist()
-        self.labels = labels
+        self.labels = labels.values.tolist()
 
 
     def to_json(self, fn):
@@ -120,7 +121,7 @@ class VoxelArray(object):
 
         self.name = name
 
-    return self
+        return self
 
 
     def load(self, fn):
@@ -132,25 +133,27 @@ class VoxelArray(object):
         self.labels = input_json['labels']
         self.name = input_json['name']
 
-    return self
+        return self
 
 
     def label(self, time_labels, label_column):
 
         if not isinstance(time_labels, list):
             self.__time_labels = [time_labels]
+        else:
+            self.__time_labels = time_labels
 
-        if not self.__data_shape == len(self.time_labels):
+        if not self.__data_shape == len(self.__time_labels):
             raise ValueError('The length of time label list provided does not '
                              'match the length of data list provided.')
 
-        for i in self.__time_labels:
-            i['run'] = i
-            i['roi'] = self.name
+        for i, j in enumerate(self.__time_labels):
+            j['run'] = i
+            j['roi'] = self.name
 
         self.labels = pd.concat([i[['roi', 'run', label_column]] for i in self.__time_labels])
 
-    return self
+        return self
 
 
     def to_dataframe(self):
@@ -164,7 +167,7 @@ class VoxelArray(object):
         output = _VoxelArrayIO(self.name, self.voxels, self.labels)
         output.to_json(fn)
 
-    return self
+        return self
 
 
 # class ROIExtractor:
