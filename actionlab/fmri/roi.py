@@ -61,7 +61,7 @@ class GlasserExtractor:
 
 
 
-class VoxelArrayIO(object):
+class _VoxelArrayIO(object):
 
     def __init__(self, name, voxels, labels):
         self.name = name
@@ -161,8 +161,8 @@ class VoxelArray(object):
             return pd.Series(list(self.voxels), name='voxels')
 
     def save(self, fn):
-        output = _VoxelArrayOutput(self.name, self.voxels, self.labels)
-        output.save(fn)
+        output = _VoxelArrayIO(self.name, self.voxels, self.labels)
+        output.to_json(fn)
 
     return self
 
