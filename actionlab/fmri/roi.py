@@ -64,19 +64,27 @@ class GlasserExtractor:
 
 class _VoxelArrayIO(object):
 
-    def __init__(self, name, voxels, labels):
+    def __init__(self, name, voxels, labels=None):
         self.name = name
-        self.voxels = voxels.tolist()
-        self.labels = labels.values.tolist()
+        self.voxels = voxels
+        self.labels = labels
 
 
     def to_json(self, fn):
+
+        self.voxels = voxels.tolist()
+        self.labels = labels.values.tolist()
         with open(fn, 'w') as f:
             json.dump(self.__dict__, f, sort_keys=True, indent=2)
 
 
     def from_json(self):
         pass
+
+
+    def to_csv(self, fn):
+        np.savetxt(fn, self.voxels, delimiter=',')
+
 
 
     def to_pickle(self):
@@ -149,9 +157,8 @@ class VoxelArray(object):
 
         for i, j in enumerate(self.__time_labels):
             j['run'] = i
-            j['roi'] = self.name
 
-        self.labels = pd.concat([i[['roi', 'run', label_column]] for i in self.__time_labels])
+        self.labels = pd.concat([i[['run', label_column]] for i in self.__time_labels])
 
         return self
 
@@ -163,9 +170,13 @@ class VoxelArray(object):
         else:
             return pd.Series(list(self.voxels), name='voxels')
 
-    def save(self, fn):
+    def save(self, fn, csv=True):
         output = _VoxelArrayIO(self.name, self.voxels, self.labels)
-        output.to_json(fn)
+
+        if csv:
+            output.to_csv(fn)
+        else:
+            output.to_json(fn)
 
         return self
 
