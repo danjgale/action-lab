@@ -21,7 +21,7 @@ def binarize_mask_array(x, threshold=None):
         return np.where(x >= threshold, 1, 0)
 
 
-class GlasserExtractor:
+class GlasserAtlas:
 
     def __init__(self, roi_dir, hemisphere):
 
@@ -29,7 +29,7 @@ class GlasserExtractor:
         self.hemisphere = hemisphere
 
 
-    def extract(self, roi_numbers):
+    def collect(self, roi_numbers):
 
         if isinstance(roi_numbers, int):
             roi_numbers = [roi_numbers]
@@ -61,124 +61,90 @@ class GlasserExtractor:
             return dict_
 
 
+def extract_voxels(roi_img, data, output_fn=None):
+    """Get timecourse for every voxel in a single ROI"""
+    masker = MultiNiftiMasker(roi_img, n_jobs=-1)
+    voxels = np.vstack(masker.fit_transform(data))
 
-class _VoxelArrayIO(object):
-
-    def __init__(self, name, voxels, labels=None):
-        self.name = name
-        self.voxels = voxels
-        self.labels = labels
-
-
-    def to_json(self, fn):
-
-        self.voxels = voxels.tolist()
-        self.labels = labels.values.tolist()
-        with open(fn, 'w') as f:
-            json.dump(self.__dict__, f, sort_keys=True, indent=2)
+    if output_fn is None:
+        return voxels
+    else:
+        print('Writing {}...'.format(output_fn))
+        np.savetxt(output_fn, voxels, delimiter=',')
 
 
-    def from_json(self):
-        pass
+def voxels_to_df(fn, labels):
+    roi_name = os.path.splitext(os.path.basename(labels))[0]
+    df = pd.read_csv(labels)
+
+    voxels = pd.Series(list(np.loadtxt(fn)))
+
+    if voxels.shape[0] != df.shape[0]:
+        raise ValueError('Rows in voxels and time labels do not match.')
+
+    df['voxels'] = voxels
+
+    return df
 
 
-    def to_csv(self, fn):
-        np.savetxt(fn, self.voxels, delimiter=',')
+class ROIDirectory(object):
+
+    def __init__(self, path):
+
+        if not os.path.exists(path):
+            os.mkdir(path)
+
+        self.path = path
 
 
+    def create_from_masks(self, roi_imgs, data_imgs, timecourse_labels=None):
+        """Generate ROI voxel arrays and store in directory.
 
-    def to_pickle(self):
-        pass
-
-
-    def from_pickle(self):
-        pass
-
-
-class VoxelArray(object):
-
-    def __init__(self, fn=None):
-
-        if fn is not None:
-            self = self.load(fn)
-        else:
-            self.labels = None
-            self.voxels = None
-            self.name = None
-
-
-    def create(self, mask_img, data, name, n_jobs=1):
-        """Create a concatenated (volumes * runs) by voxel numpy array for all data files
-        included.
+        roi_imgs is a dict with ROI label as the key and a nifti-like img
+        as the value
         """
+        for k, v in roi_imgs.items():
+            extract_voxels(v, data_imgs, os.path.join(self.path, '{}.csv'.format(k)))
 
-        try:
-            len(data)
-        except TypeError:
-            data = [data]
+        if timecourse_labels is not None:
+            timecourse_labels.to_csv(
+                os.path.join(self.path, timecourse_labels),
+                header=False,
+                index=False
+            )
 
-        self.__data_shape = len(data)
-        self.__data_ix = np.arange(self.__data_shape)
 
-        if self.__data_shape > 1:
-            masker = MultiNiftiMasker(mask_img, n_jobs=n_jobs)
-            self.voxels = np.vstack(masker.fit_transform(data))
+    def create_from_coords(self):
+        pass
+
+
+    def create_from_df(self):
+        pass
+
+
+    def load(self, rois=None, label_file='labels.csv'):
+
+        self.__label_file_exists = False
+
+        if os.path.exists(os.path.join(self.path, label_file)):
+            self.__label_file_exists = True
+            self.labels = os.path.join(self.path, label_file)
+
+        if rois is not None:
+            roi_list = [
+                voxels_to_df(i, self.labels)
+                for i in os.listdir(self.path) if i in rois
+            ]
         else:
-            masker = NiftiMasker(mask_img)
-            self.voxels = masker.fit_transform(data[0])
+            roi_list = [
+                voxels_to_df(i, self.labels)
+                for i in os.listdir(self.path) if i is not label_file
+            ]
 
-        self.name = name
+        if concat=True:
+            roi_list = pd.concat(roi_list)
 
-        return self
-
-
-    def load(self, fn):
-
-        with open(fn) as f:
-            input_json = json.load(f)
-
-        self.voxels = np.array(input_json['voxels'])
-        self.labels = input_json['labels']
-        self.name = input_json['name']
-
-        return self
-
-
-    def label(self, time_labels, label_column):
-
-        if not isinstance(time_labels, list):
-            self.__time_labels = [time_labels]
-        else:
-            self.__time_labels = time_labels
-
-        if not self.__data_shape == len(self.__time_labels):
-            raise ValueError('The length of time label list provided does not '
-                             'match the length of data list provided.')
-
-        for i, j in enumerate(self.__time_labels):
-            j['run'] = i
-
-        self.labels = pd.concat([i[['run', label_column]] for i in self.__time_labels])
-
-        return self
-
-
-    def to_dataframe(self):
-
-        if self.labels is not None:
-            return pd.concat([self.labels, pd.Series(list(self.voxels), name='voxels')])
-        else:
-            return pd.Series(list(self.voxels), name='voxels')
-
-    def save(self, fn, csv=True):
-        output = _VoxelArrayIO(self.name, self.voxels, self.labels)
-
-        if csv:
-            output.to_csv(fn)
-        else:
-            output.to_json(fn)
-
-        return self
+        return roi_list
 
 
 # class ROIExtractor:
