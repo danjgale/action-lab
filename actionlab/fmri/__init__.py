@@ -6,9 +6,10 @@ from .run_manager import (
 from .glm import GLM
 from .converters import convert_to_nifti
 from .roi import GlasserAtlas, binarize_mask_array, ROIDirectory
+from .timecourse import percent_signal_change
 
 __all__ = ['Preprocessor', 'spatially_smooth', 'Filter', 'Normalizer',
            'registration_report', 'RunManager', 'is_motion_corrected',
            'get_volumes', 'get_run_numbers', 'GLM', 'convert_to_nifti',
            'MNI152_T1_2mm_config', 'GlasserAtlas', 'binarize_mask_array',
-           'ROIDirectory']
+           'ROIDirectory', 'percent_signal_change']
