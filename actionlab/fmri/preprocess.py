@@ -270,68 +270,66 @@ class Filter(BaseProcessor):
         )
         self.infosource.iterables = [('functionals', self._input_files)]
 
-        # ------------------------
-        # Basic Filtering Workflow
-        # ------------------------
+        if self.smooth:
+            # -------------------------------------
+            # Smoothing Workflow
+            #
+            # Only occurs if smoothing is specified
+            # -------------------------------------
 
-        self.mean_img = Node(fsl.maths.MeanImage(), name="mean_img")
-
-        # nodes for unsmoothed data pipeline
-        self.temp_filter = Node(
-            fsl.maths.TemporalFilter(
-                highpass_sigma = self.highpass_sigma,
-                output_type='NIFTI',
-            ),
-            name='temp_filter'
-        )
-
-        self.filter_with_mean = Node(
-            fsl.ImageMaths(op_string='-add'),
-            name="filter_with_mean"
+            self.spatial_smooth = Node(
+                spm.Smooth(
+                    fwhm=self.fwhm
+                ),
+                name='spatial_smooth'
             )
 
-        self.workflow.connect([
-            (self.infosource, self.mean_img, [
-                ('functionals', 'in_file')
-            ]),
-            (self.mean_img, self.temp_filter, [
-                ('out_file', 'in_file')
-            ]),
-            (self.temp_filer, self.filter_with_mean, [
-                ('out_file', 'in_file')
-            ]),
-            (self.mean_img, self.filter_with_mean, [
-                ('out_file', 'in_file2')
-            ]),
-            (self.temp_filter, self.datasink, [
-                ('out_file', 'filtered')
-            ])
-        ])
-
-        # -----------------------
-        # Smoothing Workflow
-        # -----------------------
-
-        if self.smooth:
-
-            self.postsmooth_temp_filter = Node(
+            # filter nodes (same process as above, different names)
+            self.mean_img_smooth = Node(
+                fsl.maths.MeanImage(), name="mean_img"
+            )
+            self.temp_filter_smooth = Node(
                 fsl.maths.TemporalFilter(
-                    highpass_sigma = self.highpass_sigma,
+                    highpass_sigma=self.highpass_sigma,
                     output_type='NIFTI',
                 ),
-                name='postsmooth_temp_filter'
+                name='temp_filter'
             )
+            self.filter_with_mean_smooth = Node(
+                fsl.ImageMaths(op_string='-add'),
+                name="filter_with_mean"
+                )
 
+
+            # connect smoothed files to filter workflow
+            self.workflow.connect([
+                (self.spatial_smooth, self.mean_img_smooth, [
+                    ('smoothed_files', 'in_file')
+                ]),
+                (self.spatial_smooth, self.temp_filter_smooth, [
+                    ('smoothed_files', 'in_file')
+                ])
+            ])
+
+            # filter workflow done post-smoothing
+            self.workflow.connect([
+                (self.temp_filter_smooth, self.filter_with_mean_smooth, [
+                    ('out_file', 'in_file')
+                ]),
+                (self.mean_img_smooth, self.filter_with_mean_smooth, [
+                    ('out_file', 'in_file2')
+                ]),
+                (self.filter_with_mean_smooth, self.datasink, [
+                    ('out_file', 'smoothed_filtered')
+                ])
+            ])
+
+            # ----------------------- Data input handling ---------------------
             if self.zipped:
+                # need to unzip for SPM's smoothing
                 self.gunzip = Node(
                     Gunzip(),
                     name='gunzip'
-                )
-                self.spatial_smooth = Node(
-                    spm.Smooth(
-                        fwhm=self.fwhm
-                    ),
-                    name='spatial_smooth',
                 )
                 self.workflow.connect([
                     (self.infosource, self.gunzip, [
@@ -340,32 +338,56 @@ class Filter(BaseProcessor):
                     (self.gunzip, self.spatial_smooth, [
                         ('out_file', 'in_files')
                     ]),
-                    (self.spatial_smooth, self.postsmooth_temp_filter, [
-                        ('smoothed_files', 'in_file')
-                    ]),
-                    (self.postsmooth_temp_filter, self.datasink, [
-                        ('out_file', 'smoothed_filtered')
-                    ])
                 ])
 
             else:
-                self.spatial_smooth = Node(
-                    spm.Smooth(
-                        fwhm=self.fwhm
-                    ),
-                    name='spatial_smooth'
-                )
                 self.workflow.connect([
                     (self.infosource, self.spatial_smooth, [
                         ('functionals', 'in_files')
-                    ]),
-                    (self.spatial_smooth, self.postsmooth_temp_filter, [
-                        ('smoothed_files', 'in_file')
-                    ]),
-                    (self.postsmooth_temp_filter, self.datasink, [
-                        ('out_file', 'smoothed_filtered')
                     ])
                 ])
+            # -----------------------------------------------------------------
+
+        else:
+            # -----------------------------
+            # Basic Filtering Workflow
+            #
+            # If smoothing is not specified
+            # -----------------------------
+
+            self.mean_img = Node(fsl.maths.MeanImage(), name="mean_img")
+
+            # nodes for unsmoothed data pipeline
+            self.temp_filter = Node(
+                fsl.maths.TemporalFilter(
+                    highpass_sigma=self.highpass_sigma,
+                    output_type='NIFTI',
+                ),
+                name='temp_filter'
+            )
+
+            self.filter_with_mean = Node(
+                fsl.ImageMaths(op_string='-add'),
+                name="filter_with_mean"
+                )
+
+            self.workflow.connect([
+                (self.infosource, self.mean_img, [
+                    ('functionals', 'in_file')
+                ]),
+                (self.infosource, self.temp_filter, [
+                    ('functionals', 'in_file')
+                ]),
+                (self.temp_filter, self.filter_with_mean, [
+                    ('out_file', 'in_file')
+                ]),
+                (self.mean_img, self.filter_with_mean, [
+                    ('out_file', 'in_file2')
+                ]),
+                (self.filter_with_mean, self.datasink, [
+                    ('out_file', 'filtered')
+                ])
+            ])
 
         return self
 
