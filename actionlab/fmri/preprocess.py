@@ -235,7 +235,7 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
 
 class Filter(BaseProcessor):
 
-    def __init__(self, sub_id, input_data, output_path, zipped=True, smooth=True,
+    def __init__(self, sub_id, input_data, output_path, zipped=True, smooth=False,
                  input_file_endswith=None, sort_input_files=True):
         """Spatially and temporally filter data using a separate workflow
 
@@ -270,9 +270,11 @@ class Filter(BaseProcessor):
         )
         self.infosource.iterables = [('functionals', self._input_files)]
 
-        # -----------------------
+        # ------------------------
         # Basic Filtering Workflow
-        # -----------------------
+        # ------------------------
+
+        self.mean_img = Node(fsl.maths.MeanImage(), name="mean_img")
 
         # nodes for unsmoothed data pipeline
         self.temp_filter = Node(
@@ -283,9 +285,23 @@ class Filter(BaseProcessor):
             name='temp_filter'
         )
 
+        self.filter_with_mean = Node(
+            fsl.ImageMaths(op_string='-add'),
+            name="filter_with_mean"
+            )
+
         self.workflow.connect([
-            (self.infosource, self.temp_filter, [
+            (self.infosource, self.mean_img, [
                 ('functionals', 'in_file')
+            ]),
+            (self.mean_img, self.temp_filter, [
+                ('out_file', 'in_file')
+            ]),
+            (self.temp_filer, self.filter_with_mean, [
+                ('out_file', 'in_file')
+            ]),
+            (self.mean_img, self.filter_with_mean, [
+                ('out_file', 'in_file2')
             ]),
             (self.temp_filter, self.datasink, [
                 ('out_file', 'filtered')
