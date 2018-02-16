@@ -235,7 +235,7 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
 
 class Filter(BaseProcessor):
 
-    def __init__(self, sub_id, input_data, output_path, zipped=True, smooth=False,
+    def __init__(self, sub_id, input_data, output_path, zipped=True, smooth=True,
                  input_file_endswith=None, sort_input_files=True):
         """Spatially and temporally filter data using a separate workflow
 
@@ -296,7 +296,7 @@ class Filter(BaseProcessor):
                 name='temp_filter'
             )
             self.filter_with_mean_smooth = Node(
-                fsl.ImageMaths(op_string='-add'),
+                fsl.ImageMaths(op_string='-add', output_type='NIFTI'),
                 name="filter_with_mean"
                 )
 
@@ -367,7 +367,7 @@ class Filter(BaseProcessor):
             )
 
             self.filter_with_mean = Node(
-                fsl.ImageMaths(op_string='-add'),
+                fsl.ImageMaths(op_string='-add', output_type='NIFTI'),
                 name="filter_with_mean"
                 )
 
