@@ -61,10 +61,9 @@ class GlasserAtlas:
             return dict_
 
 
-def extract_voxels(roi_img, data, output_fn=None, average=False):
+def extract_voxels(mask, data, output_fn=None, average=False):
     """Get timecourse for every voxel in a single ROI"""
-    masker = MultiNiftiMasker(roi_img, n_jobs=-1)
-    voxels = np.vstack(masker.fit_transform(data))
+    voxels = np.vstack(mask.fit_transform(data))
 
     if average:
         voxels = np.mean(voxels, axis=1)
@@ -80,10 +79,9 @@ def voxels_to_df(fn, labels):
     roi_name = os.path.splitext(os.path.basename(fn))[0]
     df = pd.read_csv(labels, header=None)
     df['roi'] = roi_name
-    print(df.shape)
+    df.rename(columns={0: 'run', 1: 'label'}, inplace=True)
 
     voxels = pd.Series(list(np.loadtxt(fn,  delimiter=',')), name='voxels')
-    print(voxels.shape)
 
     if voxels.shape[0] != df.shape[0]:
         raise ValueError('Rows in voxels and time labels do not match.')
@@ -103,17 +101,18 @@ class ROIDirectory(object):
         self.path = path
 
 
-    def create_from_masks(self, roi_imgs, data_imgs, timecourse_labels=None,
-                          average=False):
+    def create_from_masks(self, roi_imgs, data_imgs, timecourse_labels=None):
         """Generate ROI voxel arrays and store in directory.
 
         roi_imgs is a dict with ROI label as the key and a nifti-like img
         as the value
         """
         for k, v in roi_imgs.items():
-            extract_voxels(v, data_imgs,
-                           os.path.join(self.path, '{}.csv'.format(k)), average)
 
+            mask = MultiNiftiMasker(v, n_jobs=-1)
+
+            extract_voxels(mask, data_imgs,
+                           os.path.join(self.path, '{}.csv'.format(k)), average)
 
         timecourse_labels.to_csv(
             os.path.join(self.path, timecourse_labels),
@@ -130,7 +129,7 @@ class ROIDirectory(object):
         pass
 
 
-    def load(self, rois=None, label_file='labels.csv', concat=True, filetype='.csv'):
+    def load(self, rois=None, label_file='labels.csv', concat=False, filetype='.csv'):
 
         if filetype is not None:
             # add file extension so rois can be inputted as just labels
@@ -153,13 +152,25 @@ class ROIDirectory(object):
                 for i in os.listdir(self.path) if i is not label_file
             ]
 
-        if len(rois) == 1:
+        if len(rois) == 0:
+            raise ValueError("No ROIs found.")
+        elif len(rois) == 1:
             return roi_list[0]
+        else:
+            pass
+
 
         if concat:
             roi_list = pd.concat(roi_list)
 
         return roi_list
+
+def MNI_to_voxels(x, y, z):
+    """Convert MNI mm coordinates into voxel space on a 2mm MNI template.
+
+    From https://www.jiscmail.ac.uk/cgi-bin/webadmin?A2=fsl;d95418af.1308
+    """
+    return (-x + 90)/2, (y + 126)/2, (z + 72)/2
 
 
 # class ROIExtractor:
