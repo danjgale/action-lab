@@ -16,6 +16,7 @@ from nipype.interfaces.utility import IdentityInterface, Function
 from nipype.algorithms.misc import Gunzip
 from nilearn.image import smooth_img
 from nibabel import nifti1
+from nilearn.input_data import MultiNiftiMasker
 
 from .base import BaseProcessor
 
@@ -405,3 +406,122 @@ class Filter(BaseProcessor):
         return self
 
 
+def _segment_anat(fn, output_dir):
+    fast = fsl.FAST(in_files=fn, img_type=1, segments=True,
+                    out_basename='fast_')
+    fast.run()
+
+    # return binary masks for WM and CSF
+    return os.path.join(output_dir, ''), os.path.join(output_dir, '')
+
+
+def _normalize_segment(transform, mask, nonlinear=False,
+                       standard='MNI152_T1_2mm_brain.nii.gz'):
+    """Normalize binary segment mask. `transform` is either a coeff nifti file
+    if nonlinear, or a matrix file if linear.
+    """
+
+    if nonlinear:
+        norm = fsl.ApplyWarp(
+            in_file=mask,
+            ref_file=fsl.Info.standard_image(standard),
+            field_file=transform,
+            out_file=mask
+        )
+    else:
+        norm = fsl.ApplyXFM(
+            in_file=mask,
+            ref_file=fsl.Info.standard_image(standard),
+            in_matrix_file=transform,
+            out_file=mask
+        )
+
+    return None
+
+
+def _extract_matter(runs, binary_mask):
+
+    masker = MultiNiftiMasker(binary_mask, n_jobs=-1)
+    voxels = masker.fit_transform(runs)
+
+    # return average intensity of each time point
+    return np.mean(voxels, axis=0)
+
+
+class SubjectConfounds(object):
+
+    def __init__(self, , functional_runs, output_path, motion_parameters=None):
+        """ Generate confound files
+
+        Creates confound.csv files containing regressors for mask extraction.
+        Each file corresponds to one run with shape of (volumes, n regressors).
+        """
+
+        self.functional_runs = functional_runs
+        self.output_path = output_path
+
+        if motion_parameters is not None:
+            self.confounds = [pd.read_csv(i) for i in motion_parameters]
+
+            for i in self.confounds:
+                i.columns = ['motion1', 'motion2', 'motion3', 'motion4',
+                             'motion5', 'motion6']
+
+        else:
+            self.confounds = None
+
+
+    def segment(self, anatomical, transform, subfolder=None, nonlinear_norm=False):
+
+        self.anatomical = anatomical
+        self.transform = transform
+
+        if subfolder is not None:
+            outdir = os.path.join(self.output_path, subfolder)
+        else:
+            outdir = self.output_path
+
+        # get tissue masks
+        self.WM, self.CSF = _segment_anat(self.anatomical, outdir)
+        _normalize_segments(self.transform, self.WM, nonlinear_norm)
+        _normalize_segments(self.transform, self.CSF, nonlinear_norm)
+
+        # get timeseries of WM and CSF for each run
+        self.WM_timeseries = _extract_matter(self.functional_runs, self.WM)
+        self.CSF_timeseries = _extract_matter(self.functional_runs, self.CSF)
+
+        # add timeseries to confounds
+        if self.confounds is None:
+            self.confounds = [
+                pd.DataFrame({'wm': self.WM_timeseries[i], 'csf': self.CSF_timeseries[i]})
+                for i in np.arange(len(self.WM_timeseries))
+            ]
+        else:
+            for i, j in enumerate(self.confounds):
+                j['wm'] = self.WM_timeseries[i]
+                j['csf'] = self.CSF_timeseries[i]
+
+
+    def add_constant(self):
+        if self.confounds is None:
+            raise Exception('Other confound regressors must be present')
+        else:
+            for i, j in enumerate(self.confounds):
+                j['const'] = 1
+
+
+    def add_linear_drift(self):
+        if self.confounds is None:
+            raise Exception('Other confound regressors must be present')
+        else:
+            for i, j in enumerate(self.confounds):
+                j['lin'] = np.arange(len(j))
+
+
+    def write(self):
+
+        if self.confounds is None:
+            raise AttributeError('Confounds currently not set; cannot write files.')
+        else:
+            for i, j in enumerate(self.confounds):
+                j.to_csv(os.path.join(output_path, 'confound{}.csv'.format(i + 1), index=False)
