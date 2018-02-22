@@ -455,11 +455,13 @@ def _normalize_segment(transform, mask, nonlinear=False,
 
     return None
 
+def _binarize(img_list, thresh):
+    for i in img_list
+        binarize = fsl.maths.Threshold(in_file=i, thresh=thresh, out_file=i)
+        binarize.run()
 
-def _extract_matter(runs, roi_mask, mask_thresh=None):
 
-    mask = nibabel.nifti1.load(roi_mask).get_data()
-    mask = binarize_mask_array(mask, threshold=mask_thresh)
+def _extract_matter(runs, mask):
 
     masker = MultiNiftiMasker(mask, n_jobs=-1)
     voxels = masker.fit_transform(runs)
@@ -496,6 +498,7 @@ class SubjectConfounds(object):
 
         self.anatomical = anatomical
         self.transform = transform
+        self.binarization_threshold = binarization_threshold
 
         if subfolder is not None:
             outdir = os.path.join(self.output_path, subfolder)
@@ -508,13 +511,16 @@ class SubjectConfounds(object):
         print('Segmenting to {} ...'.format(outdir))
         # get tissue masks
         self.WM, self.CSF = _segment_anat(self.anatomical, outdir)
-        print(self.WM)
-        print(self.CSF)
 
+        # file-based operations done in place
         _normalize_segment(self.transform, self.WM, nonlinear)
-        _normalize_segment(self.transform, self.CSF, nonlinear)
+        _binarize(self.WM, self.binarization_threshold)
 
-        # get timeseries of WM and CSF for each run
+        _normalize_segment(self.transform, self.CSF, nonlinear)
+        _binarize(self.CSF, self.binarization_threshold)
+
+
+        # get timeseries of WM and CSF for each run (returns list of runs)
         self.WM_timeseries = _extract_matter(self.functional_runs, self.WM, binarization_threshold)
         self.CSF_timeseries = _extract_matter(self.functional_runs, self.CSF, binarization_threshold)
 
