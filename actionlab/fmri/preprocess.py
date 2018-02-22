@@ -428,19 +428,18 @@ def _segment_anat(fn, output_dir):
     return os.path.join(output_dir, 'fast_seg_2.nii.gz'), os.path.join(output_dir, 'fast_seg_0.nii.gz')
 
 
-def _normalize_segment(affine, mask, warp=None,
+def _normalize_segment(transform, mask, nonlinear=False,
                        standard='MNI152_T1_2mm_brain.nii.gz'):
     """Normalize binary segment mask. `transform` is either a coeff nifti file
     if nonlinear, or a matrix file if linear.
     """
 
-    if warp is not None:
+    if nonlinear:
         # assume nonlinear normalization
         norm = fsl.ApplyWarp(
             in_file=mask,
-            premat=affine,
             ref_file=fsl.Info.standard_image(standard),
-            field_file=warp,
+            field_file=transform,
             out_file=mask
         )
     else:
@@ -489,11 +488,10 @@ class SubjectConfounds(object):
             self.confounds = None
 
 
-    def segment(self, anatomical, affine, subfolder=None, warp=None):
+    def segment(self, anatomical, transform, subfolder=None, nonlinear=False):
 
         self.anatomical = anatomical
-        self.transform = affine
-        self.warp = warp
+        self.transform = transform
 
         if subfolder is not None:
             outdir = os.path.join(self.output_path, subfolder)
@@ -509,8 +507,8 @@ class SubjectConfounds(object):
         print(self.WM)
         print(self.CSF)
         
-        _normalize_segment(self.transform, self.WM, self.warp)
-        _normalize_segment(self.transform, self.CSF, self.warp)
+        _normalize_segment(self.transform, self.WM, nonlinear)
+        _normalize_segment(self.transform, self.CSF, nonlinear)
         
         raise Exception
         # get timeseries of WM and CSF for each run
