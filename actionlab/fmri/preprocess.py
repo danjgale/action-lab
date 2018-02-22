@@ -6,6 +6,8 @@ import os
 import sys
 import argparse
 import glob
+import pandas as pd
+import numpy as np
 import nipype
 from nipype import logging
 from nipype.pipeline.engine import Workflow, Node, MapNode
@@ -19,6 +21,7 @@ from nibabel import nifti1
 from nilearn.input_data import MultiNiftiMasker
 
 from .base import BaseProcessor
+from .roi import binarize_mask_array
 
 
 class Preprocessor(BaseProcessor):
@@ -407,34 +410,49 @@ class Filter(BaseProcessor):
 
 
 def _segment_anat(fn, output_dir):
+
     fast = fsl.FAST(in_files=fn, img_type=1, segments=True,
-                    out_basename='fast_')
+                    verbose=True, out_basename=os.path.join(output_dir, 'fast'), 
+                    ignore_exception=True)
+    fast.base_dir = output_dir
     fast.run()
 
+    # only way to get around a real dumb nipype issue is to ignore the exception and
+    # manually check if the correct files are ouputted. Only need the WM and CSF maps, but
+    # 9 files are generated each time if run correctly
+    output_files = [i for i in os.listdir(output_dir) if i.endswith('.nii.gz')]
+    if len(output_files) != 9:
+        raise Exception 
+
     # return binary masks for WM and CSF
-    return os.path.join(output_dir, ''), os.path.join(output_dir, '')
+    return os.path.join(output_dir, 'fast_seg_2.nii.gz'), os.path.join(output_dir, 'fast_seg_0.nii.gz')
 
 
-def _normalize_segment(transform, mask, nonlinear=False,
+def _normalize_segment(affine, mask, warp=None,
                        standard='MNI152_T1_2mm_brain.nii.gz'):
     """Normalize binary segment mask. `transform` is either a coeff nifti file
     if nonlinear, or a matrix file if linear.
     """
 
-    if nonlinear:
+    if warp is not None:
+        # assume nonlinear normalization
         norm = fsl.ApplyWarp(
             in_file=mask,
+            premat=affine,
             ref_file=fsl.Info.standard_image(standard),
-            field_file=transform,
+            field_file=warp,
             out_file=mask
         )
     else:
+       # assume linear transformation
         norm = fsl.ApplyXFM(
             in_file=mask,
             ref_file=fsl.Info.standard_image(standard),
             in_matrix_file=transform,
             out_file=mask
         )
+    
+    norm.run()
 
     return None
 
@@ -450,7 +468,7 @@ def _extract_matter(runs, binary_mask):
 
 class SubjectConfounds(object):
 
-    def __init__(self, , functional_runs, output_path, motion_parameters=None):
+    def __init__(self, functional_runs, output_path, motion_parameters=None):
         """ Generate confound files
 
         Creates confound.csv files containing regressors for mask extraction.
@@ -461,31 +479,40 @@ class SubjectConfounds(object):
         self.output_path = output_path
 
         if motion_parameters is not None:
-            self.confounds = [pd.read_csv(i) for i in motion_parameters]
+            self.confounds = [pd.read_csv(i, sep="\s+") for i in motion_parameters]
+            
 
             for i in self.confounds:
                 i.columns = ['motion1', 'motion2', 'motion3', 'motion4',
                              'motion5', 'motion6']
-
         else:
             self.confounds = None
 
 
-    def segment(self, anatomical, transform, subfolder=None, nonlinear_norm=False):
+    def segment(self, anatomical, affine, subfolder=None, warp=None):
 
         self.anatomical = anatomical
-        self.transform = transform
+        self.transform = affine
+        self.warp = warp
 
         if subfolder is not None:
             outdir = os.path.join(self.output_path, subfolder)
         else:
             outdir = self.output_path
 
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+
+        print('Segmenting to {} ...'.format(outdir))
         # get tissue masks
         self.WM, self.CSF = _segment_anat(self.anatomical, outdir)
-        _normalize_segments(self.transform, self.WM, nonlinear_norm)
-        _normalize_segments(self.transform, self.CSF, nonlinear_norm)
-
+        print(self.WM)
+        print(self.CSF)
+        
+        _normalize_segment(self.transform, self.WM, self.warp)
+        _normalize_segment(self.transform, self.CSF, self.warp)
+        
+        raise Exception
         # get timeseries of WM and CSF for each run
         self.WM_timeseries = _extract_matter(self.functional_runs, self.WM)
         self.CSF_timeseries = _extract_matter(self.functional_runs, self.CSF)
@@ -524,4 +551,4 @@ class SubjectConfounds(object):
             raise AttributeError('Confounds currently not set; cannot write files.')
         else:
             for i, j in enumerate(self.confounds):
-                j.to_csv(os.path.join(output_path, 'confound{}.csv'.format(i + 1), index=False)
+                j.to_csv(os.path.join(output_path, 'confound{}.csv'.format(i + 1), index=False))
