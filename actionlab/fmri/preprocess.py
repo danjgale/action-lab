@@ -412,7 +412,7 @@ class Filter(BaseProcessor):
 def _segment_anat(fn, output_dir):
 
     fast = fsl.FAST(in_files=fn, img_type=1, segments=True,
-                    verbose=True, out_basename=os.path.join(output_dir, 'fast'), 
+                    verbose=True, out_basename=os.path.join(output_dir, 'fast'),
                     ignore_exception=True)
     fast.base_dir = output_dir
     fast.run()
@@ -422,7 +422,7 @@ def _segment_anat(fn, output_dir):
     # 9 files are generated each time if run correctly
     output_files = [i for i in os.listdir(output_dir) if i.endswith('.nii.gz')]
     if len(output_files) != 9:
-        raise Exception 
+        raise Exception
 
     # return binary masks for WM and CSF
     return os.path.join(output_dir, 'fast_seg_2.nii.gz'), os.path.join(output_dir, 'fast_seg_0.nii.gz')
@@ -450,15 +450,18 @@ def _normalize_segment(transform, mask, nonlinear=False,
             in_matrix_file=transform,
             out_file=mask
         )
-    
+
     norm.run()
 
     return None
 
 
-def _extract_matter(runs, binary_mask):
+def _extract_matter(runs, roi_mask, mask_thresh=None):
 
-    masker = MultiNiftiMasker(binary_mask, n_jobs=-1)
+    mask = nibabel.nifti1.load(roi_mask).get_data()
+    mask = binarize_mask_array(mask, threshold=mask_thresh)
+
+    masker = MultiNiftiMasker(mask, n_jobs=-1)
     voxels = masker.fit_transform(runs)
 
     # return average intensity of each time point
@@ -479,7 +482,7 @@ class SubjectConfounds(object):
 
         if motion_parameters is not None:
             self.confounds = [pd.read_csv(i, sep="\s+") for i in motion_parameters]
-            
+
 
             for i in self.confounds:
                 i.columns = ['motion1', 'motion2', 'motion3', 'motion4',
@@ -488,7 +491,8 @@ class SubjectConfounds(object):
             self.confounds = None
 
 
-    def segment(self, anatomical, transform, subfolder=None, nonlinear=False):
+    def segment(self, anatomical, transform, subfolder=None, nonlinear=False,
+                binarization_threshold=.5):
 
         self.anatomical = anatomical
         self.transform = transform
@@ -506,14 +510,13 @@ class SubjectConfounds(object):
         self.WM, self.CSF = _segment_anat(self.anatomical, outdir)
         print(self.WM)
         print(self.CSF)
-        
+
         _normalize_segment(self.transform, self.WM, nonlinear)
         _normalize_segment(self.transform, self.CSF, nonlinear)
-        
-        raise Exception
+
         # get timeseries of WM and CSF for each run
-        self.WM_timeseries = _extract_matter(self.functional_runs, self.WM)
-        self.CSF_timeseries = _extract_matter(self.functional_runs, self.CSF)
+        self.WM_timeseries = _extract_matter(self.functional_runs, self.WM, binarization_threshold)
+        self.CSF_timeseries = _extract_matter(self.functional_runs, self.CSF, binarization_threshold)
 
         # add timeseries to confounds
         if self.confounds is None:
