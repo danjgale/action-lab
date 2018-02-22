@@ -131,7 +131,7 @@ class ROIDirectory(object):
 
     def load(self, rois=None, label_file='labels.csv', concat=False, filetype='.csv'):
 
-        if filetype is not None:
+        if filetype is not None and rois is not None:
             # add file extension so rois can be inputted as just labels
             rois = [i + filetype for i in rois]
 
@@ -149,10 +149,14 @@ class ROIDirectory(object):
         else:
             roi_list = [
                 voxels_to_df(os.path.join(self.path, i), self.labels)
-                for i in os.listdir(self.path) if i is not label_file
+                for i in os.listdir(self.path) if i != label_file
             ]
+            
+            
 
-        if len(rois) == 0:
+        if rois is None:
+            pass
+        elif len(rois) == 0:
             raise ValueError("No ROIs found.")
         elif len(rois) == 1:
             return roi_list[0]
