@@ -455,19 +455,18 @@ def _normalize_segment(transform, mask, nonlinear=False,
 
     return None
 
-def _binarize(img_list, thresh):
-    for i in img_list
-        binarize = fsl.maths.Threshold(in_file=i, thresh=thresh, out_file=i)
-        binarize.run()
+def _binarize(img, thresh):
+    binarize = fsl.ImageMaths(in_file=img, op_string='-thr {} -bin'.format(thresh), out_file=img)
+    binarize.run()
 
 
 def _extract_matter(runs, mask):
-
+    
     masker = MultiNiftiMasker(mask, n_jobs=-1)
     voxels = masker.fit_transform(runs)
 
     # return average intensity of each time point
-    return np.mean(voxels, axis=0)
+    return [np.mean(i, axis=1) for i in voxels]
 
 
 class SubjectConfounds(object):
@@ -483,7 +482,7 @@ class SubjectConfounds(object):
         self.output_path = output_path
 
         if motion_parameters is not None:
-            self.confounds = [pd.read_csv(i, sep="\s+") for i in motion_parameters]
+            self.confounds = [pd.read_csv(i, sep="\s+", header=None) for i in motion_parameters]
 
 
             for i in self.confounds:
@@ -513,16 +512,15 @@ class SubjectConfounds(object):
         self.WM, self.CSF = _segment_anat(self.anatomical, outdir)
 
         # file-based operations done in place
-        _normalize_segment(self.transform, self.WM, nonlinear)
-        _binarize(self.WM, self.binarization_threshold)
-
-        _normalize_segment(self.transform, self.CSF, nonlinear)
-        _binarize(self.CSF, self.binarization_threshold)
-
+        for i in [self.WM, self.CSF]:
+            _normalize_segment(self.transform, i, nonlinear)
+            _binarize(i, self.binarization_threshold)
 
         # get timeseries of WM and CSF for each run (returns list of runs)
-        self.WM_timeseries = _extract_matter(self.functional_runs, self.WM, binarization_threshold)
-        self.CSF_timeseries = _extract_matter(self.functional_runs, self.CSF, binarization_threshold)
+        print('extracting {}'.format(self.WM))
+        self.WM_timeseries = _extract_matter(self.functional_runs, self.WM)
+        print('extracting {}'.format(self.CSF))
+        self.CSF_timeseries = _extract_matter(self.functional_runs, self.CSF)
 
         # add timeseries to confounds
         if self.confounds is None:
@@ -558,4 +556,4 @@ class SubjectConfounds(object):
             raise AttributeError('Confounds currently not set; cannot write files.')
         else:
             for i, j in enumerate(self.confounds):
-                j.to_csv(os.path.join(output_path, 'confound{}.csv'.format(i + 1), index=False))
+                j.to_csv(os.path.join(self.output_path, 'confound{}.csv'.format(i + 1)), index=False)
