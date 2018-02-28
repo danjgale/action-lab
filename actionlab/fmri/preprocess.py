@@ -55,7 +55,6 @@ class Preprocessor(BaseProcessor):
         self.fwhm = fwhm
         self.bet_frac = bet_frac
         self.bet_gradient = bet_gradient
-        self.parameterize_output = parameterize_output
         self.motion_ref_volume = motion_ref_volume
         self.workflow_name = workflow_name
 
@@ -112,7 +111,8 @@ class Preprocessor(BaseProcessor):
                 time_repetition=self.TR,
                 output_type='NIFTI' # for SPM
             ),
-            iterfield='in_file'
+            iterfield='in_file',
+            name='slicetime'
         )
 
         # -----------------
