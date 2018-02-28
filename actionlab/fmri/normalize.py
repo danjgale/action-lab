@@ -232,7 +232,6 @@ class Normalizer(BaseProcessor):
         self.infosource.iterables = [('t2_files', self._input_files)]
         self.infosource.inputs.t1 = self.t1
         self.infosource.inputs.t2_ref = self.t2_ref
-        self.infosource.inputs.t2_files = self.__input_files
         self.infosource.inputs.standard = self.standard
 
 
@@ -463,15 +462,15 @@ class Normalizer(BaseProcessor):
 
     def make_reports(self):
 
-        self.__report_dir = os.path.join(self.__sub_output_dir, 'reports')
+        self.__report_dir = os.path.join(self._sub_output_dir, 'reports')
 
         if not os.path.exists(self.__report_dir):
             os.makedirs(self.__report_dir)
 
-        raw_t1 = _get_file(self.t1)
-        coreg_t2 = _get_file(os.path.join(self.__sub_output_dir, 'registered'))
-        normed_t1 = _get_file(os.path.join(self.__sub_output_dir, 'normalized/anat'))
-        normed_t2 = _get_file(os.path.join(self.__sub_output_dir, 'normalized/motion_ref'))
+        raw_t1 = self.t1
+        coreg_t2 = _get_file(os.path.join(self._sub_output_dir, 'registered'))
+        normed_t1 = _get_file(os.path.join(self._sub_output_dir, 'normalized/anat'))
+        normed_t2 = _get_file(os.path.join(self._sub_output_dir, 'normalized/motion_ref'))
 
         registration_report(os.path.join(self.__report_dir, 't1_to_mni.png'),
                             normed_t1, self.standard, title='T1w to MNI Normalization')
