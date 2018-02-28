@@ -8,6 +8,7 @@ import subprocess
 import json
 import numpy as np
 import pandas as pd
+from nipype.interfaces.fsl import ImageMaths, Info
 import nilearn
 from nilearn.input_data import NiftiMasker, MultiNiftiMasker
 from nibabel import nifti1
@@ -151,8 +152,8 @@ class ROIDirectory(object):
                 voxels_to_df(os.path.join(self.path, i), self.labels)
                 for i in os.listdir(self.path) if i != label_file
             ]
-            
-            
+
+
 
         if rois is None:
             pass
@@ -176,6 +177,18 @@ def MNI_to_voxels(x, y, z):
     """
     return (-x + 90)/2, (y + 126)/2, (z + 72)/2
 
+
+def sphere_mask(coordinates, radius, fn, in_file=None):
+
+    if in_file is None:
+        in_file = Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
+
+    point_string = '-mul 0 -add 1 -roi %d 1 %d 1 %d 1 0 1' % coordinates
+    point = ImageMaths(in_file=in_file, op_string=point_string, out_file=fn)
+    point.run()
+    sphere = ImageMaths(in_file=fn, out_file=fn,
+                        op_string='-kernel sphere %d -fmean' % radius)
+    sphere.run()
 
 # class ROIExtractor:
 
