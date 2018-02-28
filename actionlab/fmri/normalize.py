@@ -102,9 +102,9 @@ def test_kwargs():
 
 class Normalizer(BaseProcessor):
 
-    def __init__(self, sub_id, t1, t2, t2_ref, output_dir,
+    def __init__(self, sub_id, t1, t2, t2_ref, output_path,
                  standard='MNI152_T1_2mm_brain.nii.gz', zipped=True,
-                 input_file_endswith=None, sorted_input_files=True):
+                 input_file_endswith=None, sort_input_files=True):
 
         # typically ends with *CNS_SAG_MPRAGE_*.nii.gz
         self.t1 = t1
@@ -114,7 +114,7 @@ class Normalizer(BaseProcessor):
         #  *** Note that t2 is input data ***
         BaseProcessor.__init__(self, sub_id, self.t2, output_path, zipped,
                                input_file_endswith,
-                               sorted_input_files=sorted_input_files)
+                               sort_input_files=sort_input_files)
 
         self.standard = fsl.Info.standard_image(standard)
 
@@ -144,7 +144,7 @@ class Normalizer(BaseProcessor):
         # ---------------------------------------------------------------------
 
         self.__normalize_anat_workflow = Workflow(name='norm_anat')
-        self.__normalize_anat_workflow.base_dir = self.__working_dir
+        self.__normalize_anat_workflow.base_dir = self._working_dir
 
         self.anat_infosource = Node(
             IdentityInterface(
@@ -222,7 +222,7 @@ class Normalizer(BaseProcessor):
         # ---------------------------------------------------------------------
 
         self.__normalize_func_workflow = Workflow(name='norm_func')
-        self.__normalize_func_workflow.base_dir = self.__working_dir
+        self.__normalize_func_workflow.base_dir = self._working_dir
 
 
         self.infosource = Node(
@@ -231,7 +231,7 @@ class Normalizer(BaseProcessor):
             ),
             name='infosource'
         )
-        self.infosource.iterables = [('t2_files', self.__input_files)]
+        self.infosource.iterables = [('t2_files', self._input_files)]
 
         self.select_files = Node(
             SelectFiles(
@@ -308,7 +308,7 @@ class Normalizer(BaseProcessor):
         # ---------
 
         self.workflow = Workflow(workflow_name)
-        self.workflow.base_dir = self.__working_dir
+        self.workflow.base_dir = self._working_dir
 
         self.workflow.connect([
             (self.__normalize_anat_workflow, self.__normalize_func_workflow, [
@@ -333,7 +333,7 @@ class Normalizer(BaseProcessor):
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
         self.workflow = Workflow(name=workflow_name)
-        self.workflow.base_dir = self.__working_dir
+        self.workflow.base_dir = self._working_dir
 
         # ----------
         # Data Input
@@ -345,7 +345,7 @@ class Normalizer(BaseProcessor):
             ),
             name='infosource'
         )
-        self.infosource.iterables = [('t2_files', self.__input_files)]
+        self.infosource.iterables = [('t2_files', self._input_files)]
 
         self.select_files = Node(
             SelectFiles(
