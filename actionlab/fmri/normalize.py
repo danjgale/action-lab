@@ -148,19 +148,20 @@ class Normalizer(BaseProcessor):
 
         self.anat_infosource = Node(
             IdentityInterface(
-                fields=['t1']
+                fields=['t1', 'standard']
             ),
             name='infosource'
         )
         self.anat_infosource.inputs.t1 = self.t1
+        self.anat_infosource.inputs.standard = self.standard
 
-        self.anat_files = Node(
-            SelectFiles(
-                {'t1': '{t1}',
-                  'standard': self.standard}
-            ),
-            name='anat_files'
-        )
+        # self.anat_files = Node(
+        #     SelectFiles(
+        #         {'t1': '{t1}',
+        #           'standard': self.standard}
+        #     ),
+        #     name='anat_files'
+        # )
 
         # normalization nodes
         self.anat_transform = _get_linear_transform(
@@ -189,17 +190,14 @@ class Normalizer(BaseProcessor):
 
         # data flow
         self.__normalize_anat_workflow.connect([
-            (self.anat_infosource, self.anat_files, [
-                ('t1', 't1')
-            ]),
-            (self.anat_files, self.anat_transform, [
+            (self.anat_infosource, self.anat_transform, [
                 ('t1', 'in_file'),
                 ('standard', 'reference')
             ]),
-            (self.anat_files, self.nonlinear_transform, [
+            (self.anat_infosource, self.nonlinear_transform, [
                 ('t1', 'in_file')
             ]),
-            (self.anat_files, self.normalize_anat, [
+            (self.anat_infosource, self.normalize_anat, [
                 ('t1', 'in_file'),
                 ('standard', 'ref_file')
             ]),
@@ -227,21 +225,26 @@ class Normalizer(BaseProcessor):
 
         self.infosource = Node(
             IdentityInterface(
-                fields=['t2_files']
+                fields=['t1', 't2_ref', 't2_files', 'standard']
             ),
             name='infosource'
         )
         self.infosource.iterables = [('t2_files', self._input_files)]
+        self.infosource.inputs.t1 = self.t1
+        self.infosource.inputs.t2_ref = self.t2_ref
+        self.infosource.inputs.t2_files = self.__input_files
+        self.infosource.inputs.standard = self.standard
 
-        self.select_files = Node(
-            SelectFiles(
-                {'t1': self.t1,
-                 't2_ref': self.t2_ref,
-                 't2_files': '{t2_files}',
-                 'standard': self.standard}
-            ),
-            name='select_files'
-        )
+
+        # self.select_files = Node(
+        #     SelectFiles(
+        #         {'t1': self.t1,
+        #          't2_ref': self.t2_ref,
+        #          't2_files': '{t2_files}',
+        #          'standard': self.standard}
+        #     ),
+        #     name='select_files'
+        # )
 
         # nodes only necessary for coregistration
         self.coregister_transform = _get_linear_transform(
@@ -271,20 +274,19 @@ class Normalizer(BaseProcessor):
 
         # data flow
         self.__normalize_func_workflow.connect([
-            (self.infosource, self.select_files, [('t2_files', 't2_files')]),
-            (self.select_files, self.coregister_transform, [
+            (self.infosource, self.coregister_transform, [
                 ('t1', 'reference'),
                 ('t2_ref', 'in_file')
             ]),
-            (self.select_files, self.coregister, [
+            (self.infosource, self.coregister, [
                 ('t1', 'reference'),
                 ('t2_ref', 'in_file')
             ]),
-            (self.select_files, self.normalize_func, [
+            (self.infosource, self.normalize_func, [
                 ('t2_files', 'in_file'),
                 ('standard', 'ref_file')
             ]),
-            (self.select_files, self.normalize_motion_ref, [
+            (self.infosource, self.normalize_motion_ref, [
                 ('t2_ref', 'in_file'),
                 ('standard', 'ref_file')
             ]),
@@ -322,6 +324,8 @@ class Normalizer(BaseProcessor):
 
     def build_linear(self, t2_t1_dof=12, t2_t1_bins=None, t1_mni_dof=12,
                      t1_mni_bins=None, workflow_name='linear_normalize'):
+
+        raise Exception('Not available for now')
 
         self.__is_nonlinear = False
         self.parameterize_output = parameterize_output
