@@ -26,7 +26,8 @@ def convert_to_nifti(input_dir, output_dir, compress=True):
     else:
         compress_flag = 'n'
 
-    _make_path(output_dir)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_path)
 
     try:
         Dcm2niix(
