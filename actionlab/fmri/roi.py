@@ -180,15 +180,28 @@ def MNI_to_voxels(x, y, z):
 
 def sphere_mask(coordinates, radius, fn, in_file=None):
 
+    output_dir = os.path.dirname(fn)
+    point_file = os.path.join(output_dir, 'point.nii.gz')
+    sphere_file = os.path.join(output_dir, 'sphere.nii.gz')
+
     if in_file is None:
         in_file = Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
 
     point_string = '-mul 0 -add 1 -roi %d 1 %d 1 %d 1 0 1' % coordinates
-    point = ImageMaths(in_file=in_file, op_string=point_string, out_file=fn)
+    point = ImageMaths(in_file=in_file, op_string=point_string, out_file=point_file,
+                       out_data_type='float')
     point.run()
-    sphere = ImageMaths(in_file=fn, out_file=fn,
-                        op_string='-kernel sphere %d -fmean' % radius)
+    sphere = ImageMaths(in_file=point_file, out_file=sphere_file,
+                        op_string='-kernel sphere %d -fmean' % radius,
+                        out_data_type='float')
     sphere.run()
+    binarize = ImageMaths(in_file=sphere_file, op_string='-bin', out_file=fn,
+                          out_data_type='float')
+    binarize.run()
+
+    os.remove(point_file)
+    os.remove(sphere_file)
+
 
 # class ROIExtractor:
 
