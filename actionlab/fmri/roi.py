@@ -62,18 +62,16 @@ class GlasserAtlas:
             return dict_
 
 
-def extract_voxels(mask, data, output_fn=None, average=False):
+def extract_voxels(roi_img, data, output_fn=None, confounds=None):
     """Get timecourse for every voxel in a single ROI"""
-    voxels = np.vstack(mask.fit_transform(data))
-
-    if average:
-        voxels = np.mean(voxels, axis=1)
+    masker = MultiNiftiMasker(roi_img, n_jobs=-1)
+    voxels = np.vstack(masker.fit_transform(data, confounds=confounds))
 
     if output_fn is None:
         return voxels
     else:
         print('Writing {}...'.format(output_fn))
-        np.savetxt(output_fn, voxels, delimiter=',')
+        np.savetxt(output_fn, voxels, delimiter=',', fmt='%1.3f')
 
 
 def voxels_to_df(fn, labels):
@@ -102,7 +100,8 @@ class ROIDirectory(object):
         self.path = path
 
 
-    def create_from_masks(self, roi_imgs, data_imgs, timecourse_labels=None):
+    def create_from_masks(self, roi_imgs, data_imgs, timecourse_labels=None,
+                          confounds=None):
         """Generate ROI voxel arrays and store in directory.
 
         roi_imgs is a dict with ROI label as the key and a nifti-like img
@@ -110,10 +109,13 @@ class ROIDirectory(object):
         """
         for k, v in roi_imgs.items():
 
-            mask = MultiNiftiMasker(v, n_jobs=-1)
-
-            extract_voxels(mask, data_imgs,
-                           os.path.join(self.path, '{}.csv'.format(k)), average)
+            extract_voxels(
+                v,
+                data_imgs,
+                os.path.join(self.path, '{}.csv'.format(k)),
+                average,
+                confounds
+            )
 
         timecourse_labels.to_csv(
             os.path.join(self.path, timecourse_labels),
