@@ -234,17 +234,6 @@ class Normalizer(BaseProcessor):
         self.infosource.inputs.t2_ref = self.t2_ref
         self.infosource.inputs.standard = self.standard
 
-
-        # self.select_files = Node(
-        #     SelectFiles(
-        #         {'t1': self.t1,
-        #          't2_ref': self.t2_ref,
-        #          't2_files': '{t2_files}',
-        #          'standard': self.standard}
-        #     ),
-        #     name='select_files'
-        # )
-
         # nodes only necessary for coregistration
         self.coregister_transform = _get_linear_transform(
             'coregister_transform', self.t2_t1_dof, self.t2_t1_bins
@@ -349,16 +338,9 @@ class Normalizer(BaseProcessor):
             name='infosource'
         )
         self.infosource.iterables = [('t2_files', self._input_files)]
-
-        self.select_files = Node(
-            SelectFiles(
-                {'t1': self.t1,
-                 't2_ref': self.t2_ref,
-                 't2_files': '{t2_files}',
-                 'standard': self.standard}
-            ),
-            name='select_files'
-        )
+        self.infosource.inputs.t1 = self.t1
+        self.infosource.inputs.t2_ref = self.t2_ref
+        self.infosource.inputs.standard = self.standard
 
         # -------------------
         # Normalization nodes
@@ -403,24 +385,24 @@ class Normalizer(BaseProcessor):
 
         self.workflow.connect([
             (self.infosource, self.select_files, [('t2_files', 't2_files')]),
-            (self.select_files, self.coregister_transform, [
+            (self.infosource, self.coregister_transform, [
                 ('t1', 'reference'),
                 ('t2_ref', 'in_file')
             ]),
-            (self.select_files, self.coregister, [
+            (self.infosource, self.coregister, [
                ('t1', 'reference'),
                 ('t2_ref', 'in_file')
             ]),
 
-            (self.select_files, self.anat_transform, [
+            (self.infosource, self.anat_transform, [
                 ('t1', 'in_file'),
                 ('standard', 'reference')
             ]),
-            (self.select_files, self.normalize_anat, [
+            (self.infosource, self.normalize_anat, [
                 ('t1', 'in_file'),
                 ('standard', 'reference')
             ]),
-            (self.select_files, self.normalize_func, [
+            (self.infosource, self.normalize_func, [
                 ('t2_files', 'in_file'),
                 ('standard', 'reference')
             ]),
