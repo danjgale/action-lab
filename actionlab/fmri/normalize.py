@@ -313,10 +313,9 @@ class Normalizer(BaseProcessor):
     def build_linear(self, t2_t1_dof=12, t2_t1_bins=None, t1_mni_dof=12,
                      t1_mni_bins=None, workflow_name='linear_normalize'):
 
-        raise Exception('Not available for now')
+        #raise Exception('Not available for now')
 
         self.__is_nonlinear = False
-        self.parameterize_output = parameterize_output
         self.t2_t1_dof = t2_t1_dof
         self.t2_t1_bins = t2_t1_bins
         self.t1_mni_dof = t1_mni_dof
@@ -359,6 +358,7 @@ class Normalizer(BaseProcessor):
         self.normalize_anat = _apply_linear_transform('normalize_anat')
         self.concat = _concat_transforms('concat')
         self.normalize_func = _apply_linear_transform('normalize_func')
+        self.normalize_motion_ref = _apply_linear_transform('normalize_motion_ref')
 
         # -------------------------------
         # Intra-normalization connections
@@ -376,7 +376,10 @@ class Normalizer(BaseProcessor):
             (self.anat_transform, self.concat, [
              ('out_matrix_file', 'in_file2')]),
             (self.concat, self.normalize_func,
-             [('out_file', 'in_matrix_file')])
+             [('out_file', 'in_matrix_file')]),
+            (self.concat, self.normalize_motion_ref, [
+                ('out_file', 'in_matrix_file')
+            ])
         ])
 
         # ---------
@@ -384,7 +387,6 @@ class Normalizer(BaseProcessor):
         # ---------
 
         self.workflow.connect([
-            (self.infosource, self.select_files, [('t2_files', 't2_files')]),
             (self.infosource, self.coregister_transform, [
                 ('t1', 'reference'),
                 ('t2_ref', 'in_file')
@@ -406,6 +408,10 @@ class Normalizer(BaseProcessor):
                 ('t2_files', 'in_file'),
                 ('standard', 'reference')
             ]),
+            (self.infosource, self.normalize_motion_ref, [
+                ('t2_ref', 'in_file'),
+                ('standard', 'reference')
+            ]),
 
             # output
             (self.coregister, self.datasink, [
@@ -425,6 +431,9 @@ class Normalizer(BaseProcessor):
             ]),
             (self.normalize_func, self.datasink, [
                 ('out_file', 'normalized.@func')
+            ]),
+            (self.normalize_motion_ref, self.datasink, [
+                ('out_file', 'normalized.motion_ref')
             ])
         ])
 
