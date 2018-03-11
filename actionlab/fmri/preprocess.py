@@ -509,8 +509,8 @@ class SubjectConfounds(object):
         # get tissue masks
         self.WM, self.CSF = _segment_anat(self.anatomical, outdir)
 
-    def extract_segments(self, transform, WM=None, CSF=None, subfolder=None,
-                         nonlinear=False):
+    def extract_segments(self, WM=None, CSF=None, transform=None, nonlinear=False,
+                         subfolder=None):
         """Extract segment time series from functional runs. Can either use
         make_segments to get WM and CSF masks directly, or enter them as args
         if they already exist. Transform is a transformation to apply to the
@@ -524,9 +524,10 @@ class SubjectConfounds(object):
             self.CSF = CSF
 
         # file-based operations done in place
-        for i in [self.WM, self.CSF]:
-            _normalize_segment(self.transform, i, nonlinear)
-            _binarize(i, self.binarization_threshold)
+        if transform is not None:
+            for i in [self.WM, self.CSF]:
+                _normalize_segment(self.transform, i, nonlinear)
+                _binarize(i, self.binarization_threshold)
 
         # get timeseries of WM and CSF for each run (returns list of runs)
         print('extracting {}'.format(self.WM))
