@@ -493,9 +493,7 @@ class SubjectConfounds(object):
             self.confounds = None
 
 
-    def make_segments(self):
-
-        self.binarization_threshold = binarization_threshold
+    def make_segments(self, subfolder=None):
 
         if subfolder is not None:
             outdir = os.path.join(self.output_path, subfolder)
@@ -510,7 +508,7 @@ class SubjectConfounds(object):
         self.WM, self.CSF = _segment_anat(self.anatomical, outdir)
 
     def extract_segments(self, WM=None, CSF=None, transform=None, nonlinear=False,
-                         subfolder=None, binarization_threshold=.6):
+                         binarization_threshold=.6):
         """Extract segment time series from functional runs. Can either use
         make_segments to get WM and CSF masks directly, or enter them as args
         if they already exist. Transform is a transformation to apply to the
