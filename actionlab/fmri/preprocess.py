@@ -446,7 +446,7 @@ def _normalize_segment(transform, mask, nonlinear=False,
        # assume linear transformation
         norm = fsl.ApplyXFM(
             in_file=mask,
-            ref_file=fsl.Info.standard_image(standard),
+            reference=fsl.Info.standard_image(standard),
             in_matrix_file=transform,
             out_file=mask
         )
@@ -516,6 +516,7 @@ class SubjectConfounds(object):
         linear or nonlinear transform.
         """
         self.binarization_threshold = binarization_threshold
+        self.transform = transform
 
         if WM is not None:
             self.WM = WM
