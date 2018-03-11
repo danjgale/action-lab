@@ -461,7 +461,7 @@ def _binarize(img, thresh):
 
 
 def _extract_matter(runs, mask):
-    
+
     masker = MultiNiftiMasker(mask, n_jobs=-1)
     voxels = masker.fit_transform(runs)
 
@@ -471,7 +471,7 @@ def _extract_matter(runs, mask):
 
 class SubjectConfounds(object):
 
-    def __init__(self, functional_runs, output_path, motion_parameters=None):
+    def __init__(self, anatomical, functional_runs, output_path, motion_parameters=None):
         """ Generate confound files
 
         Creates confound.csv files containing regressors for mask extraction.
@@ -479,6 +479,7 @@ class SubjectConfounds(object):
         """
 
         self.functional_runs = functional_runs
+        self.anatomical = anatomical
         self.output_path = output_path
 
         if motion_parameters is not None:
@@ -492,11 +493,8 @@ class SubjectConfounds(object):
             self.confounds = None
 
 
-    def segment(self, anatomical, transform, subfolder=None, nonlinear=False,
-                binarization_threshold=.5):
+    def make_segments(self, binarization_threshold=.5):
 
-        self.anatomical = anatomical
-        self.transform = transform
         self.binarization_threshold = binarization_threshold
 
         if subfolder is not None:
@@ -510,6 +508,20 @@ class SubjectConfounds(object):
         print('Segmenting to {} ...'.format(outdir))
         # get tissue masks
         self.WM, self.CSF = _segment_anat(self.anatomical, outdir)
+
+    def extract_segments(self, transform, WM=None, CSF=None, subfolder=None,
+                         nonlinear=False):
+        """Extract segment time series from functional runs. Can either use
+        make_segments to get WM and CSF masks directly, or enter them as args
+        if they already exist. Transform is a transformation to apply to the
+        masks in order to extract functional data. Must specify if this is a
+        linear or nonlinear transform.
+        """
+
+        if WM is not None:
+            self.WM = WM
+        if CSF is not None:
+            self.CSF = CSF
 
         # file-based operations done in place
         for i in [self.WM, self.CSF]:
