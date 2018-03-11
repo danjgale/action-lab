@@ -428,7 +428,7 @@ def _segment_anat(fn, output_dir):
     return os.path.join(output_dir, 'fast_seg_2.nii.gz'), os.path.join(output_dir, 'fast_seg_0.nii.gz')
 
 
-def _normalize_segment(transform, mask, nonlinear=False,
+def _normalize_segment(transform, mask, mat_file, nonlinear=False,
                        standard='MNI152_T1_2mm_brain.nii.gz'):
     """Normalize binary segment mask. `transform` is either a coeff nifti file
     if nonlinear, or a matrix file if linear.
@@ -448,7 +448,8 @@ def _normalize_segment(transform, mask, nonlinear=False,
             in_file=mask,
             reference=fsl.Info.standard_image(standard),
             in_matrix_file=transform,
-            out_file=mask
+            out_file=mask,
+            out_matrix_file=mat_file
         )
 
     norm.run()
@@ -496,16 +497,16 @@ class SubjectConfounds(object):
     def make_segments(self, subfolder=None):
 
         if subfolder is not None:
-            outdir = os.path.join(self.output_path, subfolder)
+            self._outdir = os.path.join(self.output_path, subfolder)
         else:
-            outdir = self.output_path
+            self._outdir = self.output_path
 
-        if not os.path.exists(outdir):
-            os.makedirs(outdir)
+        if not os.path.exists(self._outdir):
+            os.makedirs(self._outdir)
 
-        print('Segmenting to {} ...'.format(outdir))
+        print('Segmenting to {} ...'.format(self._outdir))
         # get tissue masks
-        self.WM, self.CSF = _segment_anat(self.anatomical, outdir)
+        self.WM, self.CSF = _segment_anat(self.anatomical, self._outdir)
 
     def extract_segments(self, WM=None, CSF=None, transform=None, nonlinear=False,
                          binarization_threshold=.6):
