@@ -417,7 +417,7 @@ def _segment_anat(fn, output_dir):
     fast.base_dir = output_dir
     fast.run()
 
-    # only way to get around a real dumb nipype issue is to ignore the exception and
+    # only way to get around nipype issue is to ignore the exception and
     # manually check if the correct files are ouputted. Only need the WM and CSF maps, but
     # 9 files are generated each time if run correctly
     output_files = [i for i in os.listdir(output_dir) if i.endswith('.nii.gz')]
@@ -455,6 +455,7 @@ def _normalize_segment(transform, mask, mat_file, nonlinear=False,
     norm.run()
 
     return None
+
 
 def _binarize(img, thresh):
     binarize = fsl.ImageMaths(in_file=img, op_string='-thr {} -bin'.format(thresh), out_file=img)

@@ -38,59 +38,6 @@ def expand_events(df, duration_col):
     ).reset_index(drop=True)
 
 
-# class ProtocolBase:
-
-#     def __init__(self, onset_col, as_seconds=False):
-
-#         self.onset_col = onset_col
-
-
-#         self.__as_seconds = as_seconds
-
-#     def insert_amplitudes(self, value=1):
-
-#         for i in self.protocols:
-#             i['amp'] = value
-
-#         return self
-
-#     def get_event_durations():
-
-
-
-#     def convert_to_secs(self, columns=):
-
-#         self.__as_seconds = True
-
-#         for i in self.protocols:
-#             i[self.onset_col] = (i[self.onset_col] * 2) - 2
-#             i[self.duration_col] = self.duration_col * 2
-
-#         return self
-
-
-#     def combine(self):
-
-#         concat_list = []
-#         total = 0
-#         for i in protocol_list:
-#             i[self.onset_col] = i[self.onset_col] + total_seconds
-#             total += (i.iloc[-1][self.onset_col] + i.iloc[-1][self.duration_col])
-#             concat_list.append(i)
-
-#         return pd.concat(concat_list, axis=0)
-
-#     def make_event_files(self, event, individual_events=False):
-
-#         for i in self.protocols:
-#             _write_event_file(i, event, [self.onset_col, self.duration_col, 'amp'],
-#                               run, file_pattern, save_path, split=False)
-
-
-
-
-
-
 class ProtocolManager:
 
     def __init__(self, protocols, onset_col='onset', duration_col='duration',
@@ -140,10 +87,3 @@ class ProtocolManager:
         for i in self.protocols:
             _write_event_file(i, event, [self.onset_col, self.duration_col, 'amp'],
                               run, file_pattern, save_path, split=False)
-
-
-
-
-# class BVProtocol:
-
-#     def __init__(self, start_col, end_col, condition_col):

@@ -155,8 +155,6 @@ class ROIDirectory(object):
                 for i in os.listdir(self.path) if i != label_file
             ]
 
-
-
         if rois is None:
             pass
         elif len(rois) == 0:
@@ -171,6 +169,7 @@ class ROIDirectory(object):
             roi_list = pd.concat(roi_list)
 
         return roi_list
+
 
 def MNI_to_voxels(x, y, z):
     """Convert MNI mm coordinates into voxel space on a 2mm MNI template.
@@ -208,12 +207,3 @@ def sphere_mask(coordinates, radius, fn, in_file=None):
     # remove temp files
     os.remove(point_file)
     os.remove(sphere_file)
-
-
-# class ROIExtractor:
-
-#     def __init__(self):
-#         pass
-
-#     def extract(self):
-#         pass

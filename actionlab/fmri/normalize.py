@@ -71,33 +71,6 @@ def _get_file(directory, endswith='nii.gz'):
     else:
         return file_[0]
 
-def MNI152_T1_2mm_config():
-    # no mask added for now
-    args = {
-        'subsampling_scheme': [4, 4, 2, 2, 1, 1],
-        'max_nonlin_iter': [5, 5, 5, 5, 5, 10],
-        'in_fwhm': [8, 6, 5, 4, 3, 2],
-        'ref_fwhm': [8, 6, 5, 4, 2, 0],
-        'intensity_mapping_model': 'global_non_linear_with_bias',
-        'intensity_mapping_order': 5,
-        'apply_intensity_mapping': [1, 1, 1, 1, 1, 0],
-        'regularization_lambda': [300,150,100,50,40,30],
-        'regularization_model': 'bending_energy',
-        'biasfield_resolution': (50, 50, 50),
-        'bias_regularization_lambda': 10000,
-        'derive_from_ref': False,
-        'fieldcoeff_file': True # not in config but needed in pipeline
-    }
-    return args
-
-def test_kwargs():
-    return {
-        #'subsampling_scheme': [4, 4, 2, 2, 1, 1],
-        #'max_nonlin_iter': [5, 5, 5, 5, 5, 10],
-        #'in_fwhm': [8, 6, 5, 4, 3, 2],
-        #'ref_fwhm': [8, 6, 5, 4, 2, 0],
-        'fieldcoeff_file': True
-    }
 
 
 class Normalizer(BaseProcessor):
