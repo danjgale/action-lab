@@ -94,8 +94,8 @@ class ROIDirectory(object):
 
     def __init__(self, path):
 
-        if not os.path.exists(path):
-            os.mkdir(path)
+        # if not os.path.exists(path):
+        #     os.mkdir(path)
 
         self.path = path
 
@@ -132,7 +132,8 @@ class ROIDirectory(object):
         pass
 
 
-    def load(self, rois=None, label_file='labels.csv', concat=False, filetype='.csv'):
+    def load(self, rois=None, label_file='labels.csv', concat=False, filetype='.csv',
+             single_roi_as_list=True):
 
         if filetype is not None and rois is not None:
             # add file extension so rois can be inputted as just labels
@@ -160,7 +161,10 @@ class ROIDirectory(object):
         elif len(rois) == 0:
             raise ValueError("No ROIs found.")
         elif len(rois) == 1:
-            return roi_list[0]
+            if single_roi_as_list:
+                pass
+            else:
+                return roi_list[0]
         else:
             pass
 
