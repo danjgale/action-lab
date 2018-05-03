@@ -27,13 +27,14 @@ from .roi import binarize_mask_array
 class Preprocessor(BaseProcessor):
 
     def __init__(self, sub_id, input_data, anatomical, output_path, zipped=True,
-                 input_file_endswith=None, sort_input_files=True):
+                 input_file_endswith=None, sort_input_files=True, save_all=False):
 
         BaseProcessor.__init__(self, sub_id, input_data, output_path, zipped,
                                input_file_endswith,
                                sort_input_files=sort_input_files)
 
         self.anatomical = anatomical
+        self._save_all = save_all
 
 
     @staticmethod
@@ -195,16 +196,22 @@ class Preprocessor(BaseProcessor):
             (self.infosource, self.motion_ref, self.infosource_to_motion_ref),
             (self.infosource, self.motion_correction,
              self.infosource_to_motion_correction),
-            # outputs
+            # default outputs
             (self.motion_ref, self.datasink, self.motion_ref_to_datasink),
             (self.skullstrip, self.datasink, self.skullstrip_to_datasink),
-            (self.motion_correction, self.datasink, self.motion_correction_to_datasink),
             (self.plot_disp, self.datasink, self.plot_disp_to_datasink),
             (self.plot_trans, self.datasink, self.plot_trans_to_datasink),
             (self.plot_rot, self.datasink, self.plot_rot_to_datasink),
             (self.slicetime, self.datasink, self.slicetime_to_datasink),
             (self.smooth, self.datasink, self.smooth_to_datasink)
         ])
+
+
+        if self._save_all:
+            # save off motion correction data (prior to slicetime correction/smoothing)
+            self.workflow.connect([
+                (self.motion_correction, self.datasink, self.motion_correction_to_datasink)
+            ])
 
         return self
 
