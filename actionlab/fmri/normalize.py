@@ -94,7 +94,7 @@ class Normalizer(BaseProcessor):
         self.__is_nonlinear = None
 
 
-    def build_nonlinear(self, parameterize_output=False, t2_t1_dof=12,
+    def build_nonlinear(self, parameterize_output=False, t2_t1_dof=6,
                         t2_t1_bins=None, t1_mni_dof=12, t1_mni_bins=None,
                         fnirt_config_file=None, workflow_name='nonlinear_normalize'):
 
