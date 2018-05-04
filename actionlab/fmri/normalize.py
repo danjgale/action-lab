@@ -138,13 +138,23 @@ class Normalizer(BaseProcessor):
         self.anat_transform = _get_linear_transform(
             'anat_transform', self.t1_mni_dof, self.t1_mni_bins
         )
-        self.nonlinear_transform = Node(
-            fsl.FNIRT(ref_file=self.standard,
-                      config_file=self.config_file,
-                      fieldcoeff_file=True
-            ),
-            name='nonlinear_transform'
-        )
+
+        # must handle no config file because nipype doesn't handle None arguments
+        if self.fnirt_config_file is None:
+            self.nonlinear_transform = Node(
+                fsl.FNIRT(ref_file=self.standard,
+                        fieldcoeff_file=True
+                ),
+                name='nonlinear_transform'
+            )
+        else:
+            self.nonlinear_transform = Node(
+                fsl.FNIRT(ref_file=self.standard,
+                        config_file=self.config_file,
+                        fieldcoeff_file=True
+                ),
+                name='nonlinear_transform'
+            )
         self.normalize_anat = Node(fsl.ApplyWarp(), name='normalize_anat')
 
 
