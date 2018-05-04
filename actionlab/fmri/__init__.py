@@ -1,5 +1,5 @@
 from .preprocess import Preprocessor, spatially_smooth, Filter, SubjectConfounds
-from .normalize import Normalizer, registration_report, MNI152_T1_2mm_config
+from .normalize import Normalizer, registration_report
 from .run_manager import (
     RunManager, is_motion_corrected, get_volumes, get_run_numbers
 )
@@ -21,7 +21,6 @@ __all__ = [
     'get_run_numbers',
     'GLM',
     'convert_to_nifti',
-    'MNI152_T1_2mm_config',
     'GlasserAtlas',
     'binarize_mask_array',
     'ROIDirectory',
