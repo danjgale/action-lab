@@ -140,7 +140,7 @@ class Normalizer(BaseProcessor):
         )
 
         # must handle no config file because nipype doesn't handle None arguments
-        if self.fnirt_config_file is None:
+        if self.config_file is None:
             self.nonlinear_transform = Node(
                 fsl.FNIRT(ref_file=self.standard,
                         fieldcoeff_file=True
