@@ -96,7 +96,7 @@ class Normalizer(BaseProcessor):
 
     def build_nonlinear(self, parameterize_output=False, t2_t1_dof=12,
                         t2_t1_bins=None, t1_mni_dof=12, t1_mni_bins=None,
-                        fnirt_kwargs=None, workflow_name='nonlinear_normalize'):
+                        fnirt_config_file=None, workflow_name='nonlinear_normalize'):
 
         self.__is_nonlinear = True
         self.parameterize_output = parameterize_output
@@ -104,7 +104,14 @@ class Normalizer(BaseProcessor):
         self.t2_t1_bins = t2_t1_bins
         self.t1_mni_dof = t1_mni_dof
         self.t1_mni_bins = t1_mni_bins
-        self.fnirt_kwargs = fnirt_kwargs
+
+        # set up configuration file for FNIRT
+        if fnirt_config_file == 'default':
+            self.config_file = os.path.join(os.environ["FSLDIR"], "etc/flirtsch/T1_2_MNI152_2mm.cnf")
+        elif fnirt_config_file is not None:
+            self.config_file = fnirt_config_file
+        else:
+            self.config_file = None
 
         nipype.config.set('execution', 'remove_unnecessary_outputs', 'true')
 
@@ -128,21 +135,12 @@ class Normalizer(BaseProcessor):
         self.anat_infosource.inputs.t1 = self.t1
         self.anat_infosource.inputs.standard = self.standard
 
-        # self.anat_files = Node(
-        #     SelectFiles(
-        #         {'t1': '{t1}',
-        #           'standard': self.standard}
-        #     ),
-        #     name='anat_files'
-        # )
-
-        # normalization nodes
         self.anat_transform = _get_linear_transform(
             'anat_transform', self.t1_mni_dof, self.t1_mni_bins
         )
         self.nonlinear_transform = Node(
             fsl.FNIRT(ref_file=self.standard,
-                      config_file=os.path.join(os.environ["FSLDIR"], "etc/flirtsch/T1_2_MNI152_2mm.cnf"),
+                      config_file=self.config_file,
                       fieldcoeff_file=True
             ),
             name='nonlinear_transform'
