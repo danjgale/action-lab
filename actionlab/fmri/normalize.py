@@ -291,7 +291,7 @@ class Normalizer(BaseProcessor):
         return self
 
 
-    def build_linear(self, t2_t1_dof=12, t2_t1_bins=None, t1_mni_dof=12,
+    def build_linear(self, t2_t1_dof=6, t2_t1_bins=None, t1_mni_dof=12,
                      t1_mni_bins=None, workflow_name='linear_normalize'):
 
         #raise Exception('Not available for now')
