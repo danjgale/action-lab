@@ -243,6 +243,7 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
         compressed = True
         tmp_file_list = []
         for i in input_files:
+            print(i)
             gunzip = Gunzip(in_file=i)
             tmp_file_list.append(gunzip.run())
 
