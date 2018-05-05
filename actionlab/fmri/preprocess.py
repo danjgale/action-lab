@@ -238,12 +238,28 @@ def compute_fsl_sigma(cutoff, TR, const=2):
 
 def spatially_smooth(input_files, fwhm, output_dir=None):
 
+    if any([i.endswith('.gz') for i in input_files]):
+        # uncompress nifti files for SPM
+        compressed = True
+        tmp_file_list = []
+        for i in input_files:
+            gunzip = Gunzip(in_file=i)
+            tmp_file_list.append(gunzip.run())
+
+        input_files = tmp_file_list
+
     if output_dir is None:
         smooth = spm.Smooth(in_files=input_files, fwhm=fwhm, out_prefix='smoothed_')
     else:
         smooth = spm.Smooth(in_files=input_files, fwhm=fwhm, paths=output_dir, out_prefix='smoothed_')
 
     smooth.run()
+
+    if compressed:
+        # removed temporary uncompressed nifti files if created
+        [os.remove(i) for i in tmp_file_list]
+
+
 
 
 class Filter(BaseProcessor):
