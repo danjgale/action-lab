@@ -6,6 +6,8 @@ import os
 import sys
 import argparse
 import glob
+import gzip
+import shutil
 import pandas as pd
 import numpy as np
 import nipype
@@ -243,9 +245,22 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
         compressed = True
         tmp_file_list = []
         for i in input_files:
-            print(i)
-            gunzip = Gunzip(in_file=i)
-            tmp_file_list.append(gunzip.run())
+
+            # Nipype gunzip workaround ----------------------------------------
+            # gunzip doesn't allow you to save to path of input file...
+            if i[-3:].lower() == ".gz":
+                save_filename = i[:-3]
+            else:
+                # file is already uncompressed; skip
+                continue
+
+            print('converting {} to {}'.format(i, save_filename))
+            with gzip.open(i, 'rb') as in_file:
+                with open(save_filename, 'wb') as out_file:
+                    shutil.copyfileobj(in_file, out_file)
+            # -----------------------------------------------------------------
+
+            tmp_file_list.append(save_filename)
 
         input_files = tmp_file_list
 
