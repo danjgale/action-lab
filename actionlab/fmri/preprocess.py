@@ -238,13 +238,12 @@ def compute_fsl_sigma(cutoff, TR, const=2):
 
 def spatially_smooth(input_files, fwhm, output_dir=None):
 
-    image_list = [smooth_img(i, fwhm) for i in input_files]
-
     if output_dir is None:
-        return image_list
+        smooth = spm.Smooth(in_files=input_files, fwhm=fwhm, out_prefix='smoothed_')
     else:
-        [nifti1.save(j, os.path.join(output_dir, 'smoothed_{}'.format(input_files[i])))
-        for i, j in enumerate(image_list)]
+        smooth = spm.Smooth(in_files=input_files, fwhm=fwhm, paths=output_dir, out_prefix='smoothed_')
+
+    smooth.run()
 
 
 class Filter(BaseProcessor):
