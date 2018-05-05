@@ -180,7 +180,9 @@ class Preprocessor(BaseProcessor):
             ('mask_file', 'anatomical.mask')
         ]
         self.motion_correction_to_datasink = [
-            ('out_file', 'motion_corrected'),
+            ('out_file', 'motion_corrected')
+        ]
+        self.motion_correction_params_to_datasink = [
             ('par_file', 'motion_corrected.par')
         ]
         self.plot_disp_to_datasink = [('out_file', 'motion_corrected.disp_plots')]
@@ -202,6 +204,7 @@ class Preprocessor(BaseProcessor):
             (self.plot_disp, self.datasink, self.plot_disp_to_datasink),
             (self.plot_trans, self.datasink, self.plot_trans_to_datasink),
             (self.plot_rot, self.datasink, self.plot_rot_to_datasink),
+            (self.motion_correction, self.datasink, self.motion_correction_params_to_datasink),
             (self.slicetime, self.datasink, self.slicetime_to_datasink),
             (self.smooth, self.datasink, self.smooth_to_datasink)
         ])
