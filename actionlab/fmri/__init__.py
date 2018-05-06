@@ -3,7 +3,7 @@ from .normalize import Normalizer, registration_report
 from .run_manager import (
     RunManager, is_motion_corrected, get_volumes, get_run_numbers
 )
-from .glm import GLM
+from .glm import GLM, stack_designs
 from .converters import convert_to_nifti
 from .roi import GlasserAtlas, binarize_mask_array, ROIDirectory, MNI_to_voxels, sphere_mask
 from .timecourse import percent_signal_change
@@ -20,6 +20,7 @@ __all__ = [
     'get_volumes',
     'get_run_numbers',
     'GLM',
+    'stack_designs',
     'convert_to_nifti',
     'GlasserAtlas',
     'binarize_mask_array',
