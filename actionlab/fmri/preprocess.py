@@ -261,21 +261,20 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
             # -----------------------------------------------------------------
 
             tmp_file_list.append(save_filename)
-
         input_files = tmp_file_list
+    else:
+        compressed = False
 
     if output_dir is None:
         smooth = spm.Smooth(in_files=input_files, fwhm=fwhm, out_prefix='smoothed_')
     else:
-        smooth = spm.Smooth(in_files=input_files, fwhm=fwhm, paths=output_dir, out_prefix='smoothed_')
-
+        smooth = spm.Smooth(in_files=input_files, fwhm=fwhm, paths=output_dir,
+                            out_prefix='smoothed_')
     smooth.run()
 
     if compressed:
         # removed temporary uncompressed nifti files if created
         [os.remove(i) for i in tmp_file_list]
-
-
 
 
 class Filter(BaseProcessor):
