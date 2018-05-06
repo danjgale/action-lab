@@ -16,42 +16,54 @@ from nipype.interfaces.utility import IdentityInterface
 
 from .base import BaseProcessor
 
-def bunch_protocols(protocol, nruns, condition_col):
+
+def stack_designs(design_files, onset_col='onset', duration_col='duration'):
+    """Vertically concatenate designs for concatenated runs in model fitting.
+
+    Expected that the design files are in the same order as the functional runs.
+    Onsets from each run are adjusted to reflect new timing of concatenation.
+    """
+
+    design_list = [pd.read_csv(i) for i in design_files]
+
+    concat_list = []
+    total_seconds = 0
+    for i in design_list:
+        i[onset_col] = i[onset_col] + total_seconds
+        total_seconds += i.iloc[-1][onset_col] + i.iloc[-1][duration_col]
+        concat_list.append(i)
+    return pd.concat(concat_list, axis=0)
+
+
+def bunch_designs(design, condition_col, onset_col='onset',
+                  duration_col='duration'):
     """Create bunch object (event, start, duration, amplitudes) for
     SpecifyModel() using existing event files
     """
 
-    if isinstance(protocol, str):
-        df = pd.read_csv(protocol)
+    if isinstance(design, str):
+        df = pd.read_csv(design)
     else:
-        df = protocol
+        df = design
 
     grouped = df.groupby(condition_col)
 
-    # each bunch corresponds to ONE RUN, not one condition.
-    bunches = []
-    for i in range(nruns):
-
-        names = []
-        onsets = []
-        durations = []
-        amplitudes = []
-        for name, g in grouped:
-
-            names.append(name)
-            onsets.append(g['start'].tolist())
-            durations.append(g['duration_s'].tolist())
-            amplitudes.append(
-                np.ones(len(g['duration_s'].tolist()), dtype=np.int8).tolist()
-            )
-
-        # each element corresponds to a run
-        bunches.append(
-            Bunch(conditions=names, onsets=onsets, durations=durations,
-                  amplitudes=amplitudes)
+    # each condition has a list of onsets, durations, and amplitudes associated
+    # with it
+    names = []
+    onsets = []
+    durations = []
+    amplitudes = []
+    for name, g in grouped:
+        names.append(name)
+        onsets.append(g[onset_col].tolist())
+        durations.append(g[duration_col].tolist())
+        amplitudes.append(
+            np.ones(len(g[onset_col].tolist()), dtype=np.int8).tolist()
         )
 
-    return bunches
+    return [Bunch(conditions=names, onsets=onsets, durations=durations,
+                  amplitudes=amplitudes))]
 
 
 class GLM(BaseProcessor):
@@ -66,8 +78,10 @@ class GLM(BaseProcessor):
                                datasink_parameterization=True)
 
 
-    def build(self, protocol_file, contrasts, realign_params, output_path=None,
-              workflow_name='glm'):
+    def build(self, design, contrasts, realign_params, output_path=None,
+              high_pass_filter_cutoff=100, TR=2.0, input_units='secs',
+              workflow_name='glm', design_onset_col='onset',
+              design_duration_col='duration', design_condition_col='condition'):
 
         # note that this concatenates runs, so for a typical experiment in which
         # all runs have the same conditions but in different orders, you input
@@ -75,10 +89,12 @@ class GLM(BaseProcessor):
         # the order that they appear in the protocol file
 
         # build sets workflow for individual runs (with different protocols)
-        self.protocol_file = protocol_file
+        self.design = design
         self.contrasts = contrasts
         self.realign_params = realign_params # must be in same order as runs
-
+        self.high_pass_filter_cutoff = high_pass_filter_cutoff
+        self.TR = TR
+        self.input_units = input_units
 
         if output_path is not None:
             # update data sink directory for a specific build
@@ -106,7 +122,9 @@ class GLM(BaseProcessor):
         # Model Nodes
         # -----------
 
-        self.sub_info = bunch_protocols(protocol_file, len(run_num))
+        self.sub_info = bunch_designs(design, design_condition_col,
+                                      onset_col=design_onset_col,
+                                      duration_col=design_duration_col)
 
         self.model_spec = Node(
             SpecifySPMModel(
@@ -142,10 +160,12 @@ class GLM(BaseProcessor):
             name='con_est'
         )
 
-
         self.workflow=Workflow(name = 'glm')
         self.workflow.base_dir = self._working_dir
 
+        # -----------
+        # Work Flow
+        # -----------
         # intra-modelling flow
         self.workflow.connect([
             (self.model_spec, self.design, [('session_info', 'session_info')]),
@@ -156,7 +176,6 @@ class GLM(BaseProcessor):
                 ('residual_image', 'residual_image')
             ])
         ])
-
         # input and output flow
         self.workflow.connect([
             (self.infosource, self.model_spec, [
