@@ -24,7 +24,7 @@ def stack_designs(design_files, onset_col='onset', duration_col='duration'):
     Onsets from each run are adjusted to reflect new timing of concatenation.
     """
 
-    design_list = [pd.read_csv(i) for i in design_files]
+    design_list = [pd.read_csv(i, sep='\t') for i in design_files]
 
     concat_list = []
     total_seconds = 0
@@ -35,35 +35,35 @@ def stack_designs(design_files, onset_col='onset', duration_col='duration'):
     return pd.concat(concat_list, axis=0)
 
 
-def bunch_designs(design, condition_col, onset_col='onset',
+def bunch_designs(design_files, condition_col, onset_col='onset',
                   duration_col='duration'):
     """Create bunch object (event, start, duration, amplitudes) for
     SpecifyModel() using existing event files
     """
+    
+    bunch_list = []
+    for i in design_files:
+        df = pd.read_csv(i, sep='\t')
 
-    if isinstance(design, str):
-        df = pd.read_csv(design)
-    else:
-        df = design
+        grouped = df.groupby(condition_col)
 
-    grouped = df.groupby(condition_col)
+        # each condition has a list of onsets, durations, and amplitudes associated
+        # with it
+        names = []
+        onsets = []
+        durations = []
+        amplitudes = []
+        for name, g in grouped:
+            names.append(name)
+            onsets.append(g[onset_col].tolist())
+            durations.append(g[duration_col].tolist())
+            amplitudes.append(
+                np.ones(len(g[onset_col].tolist()), dtype=np.int8).tolist()
+            )
 
-    # each condition has a list of onsets, durations, and amplitudes associated
-    # with it
-    names = []
-    onsets = []
-    durations = []
-    amplitudes = []
-    for name, g in grouped:
-        names.append(name)
-        onsets.append(g[onset_col].tolist())
-        durations.append(g[duration_col].tolist())
-        amplitudes.append(
-            np.ones(len(g[onset_col].tolist()), dtype=np.int8).tolist()
-        )
-
-    return [Bunch(conditions=names, onsets=onsets, durations=durations,
-                  amplitudes=amplitudes))]
+        bunch_list.append(Bunch(conditions=names, onsets=onsets, durations=durations))
+     
+    return bunch_list
 
 
 class GLM(BaseProcessor):
@@ -78,7 +78,7 @@ class GLM(BaseProcessor):
                                datasink_parameterization=True)
 
 
-    def build(self, design, contrasts, realign_params, output_path=None,
+    def build(self, design_files, contrasts, realign_params, output_path=None,
               high_pass_filter_cutoff=100, TR=2.0, input_units='secs',
               workflow_name='glm', design_onset_col='onset',
               design_duration_col='duration', design_condition_col='condition'):
@@ -87,9 +87,10 @@ class GLM(BaseProcessor):
         # all runs have the same conditions but in different orders, you input
         # the concatenated protocol file for ALL runs, and include ALL runs in
         # the order that they appear in the protocol file
+        # ^^^NO LONGER TRUE!!!!
 
         # build sets workflow for individual runs (with different protocols)
-        self.design = design
+        self.design_files = design_files
         self.contrasts = contrasts
         self.realign_params = realign_params # must be in same order as runs
         self.high_pass_filter_cutoff = high_pass_filter_cutoff
@@ -109,20 +110,20 @@ class GLM(BaseProcessor):
         # Data Input
         # ----------
 
-        self.infosource = Node(
-            IdentityInterface(
-                fields=['funct', 'realign_params']
-            ),
-            name='infosource'
-        )
-        self.infosource.funct = self._input_files
-        self.infosource.realign_params = self.realign_params
+        #self.infosource = Node(
+        #    IdentityInterface(
+        #        fields=['funct', 'realign_params']
+        #    ),
+        #    name='infosource'
+        #)
+        #self.infosource.funct = self._input_files
+        #self.infosource.realign_params = self.realign_params
 
         # -----------
         # Model Nodes
         # -----------
 
-        self.sub_info = bunch_designs(design, design_condition_col,
+        self.sub_info = bunch_designs(design_files, design_condition_col,
                                       onset_col=design_onset_col,
                                       duration_col=design_duration_col)
 
@@ -132,7 +133,10 @@ class GLM(BaseProcessor):
                 high_pass_filter_cutoff = self.high_pass_filter_cutoff,
                 time_repetition=self.TR,
                 input_units=self.input_units,
-                concatenate_runs=True
+                output_units=self.input_units,
+                functional_runs = self._input_files,
+                realignment_parameters = self.realign_params,
+                concatenate_runs=False
             ),
             name='model_spec'
         )
@@ -169,8 +173,8 @@ class GLM(BaseProcessor):
         # intra-modelling flow
         self.workflow.connect([
             (self.model_spec, self.design, [('session_info', 'session_info')]),
-            (self.design, self.model_est, [('spm_mat_file', 'spm_mat_file')]),
-            (self.model_est, self.con_est, [
+            (self.design, self.estimate_model, [('spm_mat_file', 'spm_mat_file')]),
+            (self.estimate_model, self.estimate_contrast, [
                 ('spm_mat_file', 'spm_mat_file'),
                 ('beta_images', 'beta_images'),
                 ('residual_image', 'residual_image')
@@ -178,18 +182,18 @@ class GLM(BaseProcessor):
         ])
         # input and output flow
         self.workflow.connect([
-            (self.infosource, self.model_spec, [
-                ('funct', 'functional_runs'),
-                ('realign_parameters', 'realignment_parameters')
-            ]),
+            #(self.infosource, self.model_spec, [
+            #    ('funct', 'functional_runs'),
+            #    ('realign_params', 'realignment_parameters')
+            #]),
             (self.design, self.datasink, [('spm_mat_file', 'model.pre-estimate')]),
-            (self.model_est, self.datasink, [
+            (self.estimate_model, self.datasink, [
                 ('spm_mat_file', 'model.@spm'),
                 ('beta_images', 'model.@beta'),
                 ('residual_image', 'model.@res'),
                 ('RPVimage', 'model.@rpv')
             ]),
-            (self.con_est, self.datasink, [
+            (self.estimate_contrast, self.datasink, [
                 ('con_images', 'contrasts'),
                 ('spmT_images', 'contrasts.@T')
             ])
