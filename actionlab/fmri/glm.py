@@ -40,7 +40,7 @@ def bunch_designs(design_files, condition_col, onset_col='onset',
     """Create bunch object (event, start, duration, amplitudes) for
     SpecifyModel() using existing event files
     """
-    
+
     bunch_list = []
     for i in design_files:
         df = pd.read_csv(i, sep='\t')
@@ -62,7 +62,7 @@ def bunch_designs(design_files, condition_col, onset_col='onset',
             )
 
         bunch_list.append(Bunch(conditions=names, onsets=onsets, durations=durations))
-     
+
     return bunch_list
 
 
@@ -91,6 +91,7 @@ class GLM(BaseProcessor):
 
         # build sets workflow for individual runs (with different protocols)
         self.design_files = design_files
+        self.workflow_name = workflow_name
         self.contrasts = contrasts
         self.realign_params = realign_params # must be in same order as runs
         self.high_pass_filter_cutoff = high_pass_filter_cutoff
@@ -105,19 +106,6 @@ class GLM(BaseProcessor):
             self._working_dir = os.path.abspath(
                 os.path.join(output_path, 'working')
             )
-
-        # ----------
-        # Data Input
-        # ----------
-
-        #self.infosource = Node(
-        #    IdentityInterface(
-        #        fields=['funct', 'realign_params']
-        #    ),
-        #    name='infosource'
-        #)
-        #self.infosource.funct = self._input_files
-        #self.infosource.realign_params = self.realign_params
 
         # -----------
         # Model Nodes
@@ -164,7 +152,7 @@ class GLM(BaseProcessor):
             name='con_est'
         )
 
-        self.workflow=Workflow(name = 'glm')
+        self.workflow=Workflow(name = self.workflow_name)
         self.workflow.base_dir = self._working_dir
 
         # -----------
@@ -212,3 +200,114 @@ class GLM(BaseProcessor):
             self.workflow.run()
 
         return self
+
+
+class SecondLevel:
+
+    def __init__(self, input_data, output_path, zipped=True,
+                 input_file_endswith=None, sort_input_files=True):
+
+        # does not inherit BaseProcessor because this is a group-level operation
+        # rather than a single subject operation.
+
+        # set up input files, which are a list of file names to be used by
+        # the SelectFiles interface
+        if isinstance(self.input_data, str):
+            self._input_files = [os.path.join(input_data, i)
+                               for i in os.listdir(input_data)
+                               if i.endswith(input_file_endswith)]
+        elif isinstance(self.input_data, list):
+            self._input_files = self.input_data
+
+        if sort_input_files:
+            # no guarantees this works for all cases...
+            self._input_files = sorted(self._input_files)
+
+        self.output_path = output_path
+        self._working_dir =  os.path.join(self.output_path, 'working')
+        self._datasink_dir = os.path.join(self.output_path, 'output')
+
+        # Set up datasink
+        self.datasink = Node(
+            DataSink(
+                base_directory=self._datasink_dir,
+                parameterization=True
+            ),
+            name='datasink'
+        )
+
+
+    def build(self, output_path=None, workflow_name):
+
+        self.workflow_name = workflow_name
+
+        if output_path is not None:
+            # update data sink directory for a specific build
+            self._datasink_dir = os.path.abspath(
+                os.path.join(output_path, 'output')
+            )
+            self._working_dir = os.path.abspath(
+                os.path.join(output_path, 'working')
+            )
+
+        # largely taken from
+        # https://miykael.github.io/nipype_tutorial/notebooks/example_2ndlevel.html
+
+        # OneSampleTTestDesign - creates one sample T-Test Design
+        self.ttest = Node(
+            spm.OneSampleTTestDesign(
+                in_files=self._input_files,
+            ),
+            name="ttest"
+        )
+
+        # EstimateModel - estimates the model
+        self.level2estimate = Node(spm.EstimateModel(estimation_method={'Classical': 1}),
+                            name="level2estimate")
+
+        # EstimateContrast - estimates group contrast
+        self.level2conestimate = Node(spm.EstimateContrast(group_contrast=True),
+                                name="level2conestimate")
+        cont1 = ['Group', 'T', ['mean'], [1]]
+        self.level2conestimate.inputs.contrasts = [cont1]
+
+
+        self.workflow=Workflow(name=self.workflow_name)
+        self.workflow.base_dir = self._working_dir
+
+        self.workflow.connect([
+            (self.ttest, self.level2estimate, [('spm_mat_file', 'spm_mat_file')]),
+            (self.level2estimate, self.level2conestimate, [
+                ('spm_mat_file', 'spm_mat_file'),
+                ('beta_images', 'beta_images'),
+                ('residual_image', 'residual_image')
+            ])
+        ])
+
+        # output
+        self.workflow.connect([
+            (self.level2estimate, self.datasink, [
+                ('spm_mat_file', 'model'),
+                ('beta_images', 'model.@beta'),
+                ('residual_images', 'model.@resid')
+            ]),
+            (self.level2conestimate, self.datasink, [
+                ('spm_mat_file', 'contrast'),
+                ('spmT_images', 'contrast@.T'),
+                ('con_images', 'contrast.@con')
+            ])
+        ])
+
+
+    def run(self, parallel=True, print_header=True, n_procs=8):
+
+        if print_header:
+            print('=' * 30 + 'SUBJECT {}'.format(self.sub_id) + '=' * 30)
+
+        if parallel:
+            self.workflow.run('MultiProc', plugin_args = {'n_procs': n_procs})
+        else:
+            self.workflow.run()
+
+        return self
+
