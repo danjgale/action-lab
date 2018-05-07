@@ -202,53 +202,36 @@ class GLM(BaseProcessor):
         return self
 
 
-class SecondLevel:
+class GroupGLM:
 
-    def __init__(self, input_data, output_path, zipped=True,
-                 input_file_endswith=None, sort_input_files=True):
+
+    def __init__(self, output_path):
 
         # does not inherit BaseProcessor because this is a group-level operation
         # rather than a single subject operation.
 
-        # set up input files, which are a list of file names to be used by
-        # the SelectFiles interface
-        if isinstance(self.input_data, str):
-            self._input_files = [os.path.join(input_data, i)
-                               for i in os.listdir(input_data)
-                               if i.endswith(input_file_endswith)]
-        elif isinstance(self.input_data, list):
-            self._input_files = self.input_data
-
-        if sort_input_files:
-            # no guarantees this works for all cases...
-            self._input_files = sorted(self._input_files)
 
         self.output_path = output_path
         self._working_dir =  os.path.join(self.output_path, 'working')
         self._datasink_dir = os.path.join(self.output_path, 'output')
 
+
+    def build(self, input_data, name=None):
+
+        self.input_data = input_data
+
+        # place several group-level analyses (i.e. contrasts) in same output
+        # directory
+        self.name = name
         # Set up datasink
         self.datasink = Node(
             DataSink(
                 base_directory=self._datasink_dir,
+                container=self.name
                 parameterization=True
             ),
             name='datasink'
         )
-
-
-    def build(self, output_path=None, workflow_name):
-
-        self.workflow_name = workflow_name
-
-        if output_path is not None:
-            # update data sink directory for a specific build
-            self._datasink_dir = os.path.abspath(
-                os.path.join(output_path, 'output')
-            )
-            self._working_dir = os.path.abspath(
-                os.path.join(output_path, 'working')
-            )
 
         # largely taken from
         # https://miykael.github.io/nipype_tutorial/notebooks/example_2ndlevel.html
@@ -256,7 +239,7 @@ class SecondLevel:
         # OneSampleTTestDesign - creates one sample T-Test Design
         self.ttest = Node(
             spm.OneSampleTTestDesign(
-                in_files=self._input_files,
+                in_files=self.input_data,
             ),
             name="ttest"
         )
@@ -271,8 +254,10 @@ class SecondLevel:
         cont1 = ['Group', 'T', ['mean'], [1]]
         self.level2conestimate.inputs.contrasts = [cont1]
 
-
-        self.workflow=Workflow(name=self.workflow_name)
+        # -----------
+        # Work Flow
+        # -----------
+        self.workflow=Workflow(name=self.name)
         self.workflow.base_dir = self._working_dir
 
         self.workflow.connect([
