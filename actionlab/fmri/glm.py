@@ -292,7 +292,7 @@ class GroupGLM:
             if cluster_thresholding:
                 # threshold map and clusters
                 self.level2thresh = Node(
-                        Threshold(
+                        spm.Threshold(
                             contrast_index=1,
                             use_topo_fdr=True,
                             use_fwe_correction=primary_threshold_fwe_correct,
@@ -306,7 +306,7 @@ class GroupGLM:
             else:
                 # threshold map but not clusters
                 self.level2thresh = Node(
-                        Threshold(
+                        spm.Threshold(
                             contrast_index=1,
                             use_topo_fdr=False,
                             extent_threshold=minimum_voxels,
@@ -319,7 +319,7 @@ class GroupGLM:
                     ('spm_mat_file', 'spm_mat_file'),
                     ('spmT_images', 'stat_image')
                 ]),
-                (self.level2conestimate, self._datasink, [
+                (self.level2thresh, self.datasink, [
                     ('thresholded_map', 'contrast.@threshold')
                 ])
             ])
