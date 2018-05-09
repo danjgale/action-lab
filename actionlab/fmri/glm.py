@@ -227,7 +227,7 @@ class GroupGLM:
         self.datasink = Node(
             DataSink(
                 base_directory=self._datasink_dir,
-                container=self.name
+                container=os.path.join(self._datasink_dir, self.name),
                 parameterization=True
             ),
             name='datasink'
@@ -278,16 +278,13 @@ class GroupGLM:
             ]),
             (self.level2conestimate, self.datasink, [
                 ('spm_mat_file', 'contrast'),
-                ('spmT_images', 'contrast@.T'),
+                ('spmT_images', 'contrast.@T'),
                 ('con_images', 'contrast.@con')
             ])
         ])
 
 
-    def run(self, parallel=True, print_header=True, n_procs=8):
-
-        if print_header:
-            print('=' * 30 + 'SUBJECT {}'.format(self.sub_id) + '=' * 30)
+    def run(self, parallel=True, n_procs=8):
 
         if parallel:
             self.workflow.run('MultiProc', plugin_args = {'n_procs': n_procs})
