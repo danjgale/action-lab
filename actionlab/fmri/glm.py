@@ -203,8 +203,6 @@ class GLM(BaseProcessor):
 
 
 class GroupGLM:
-
-
     def __init__(self, output_path):
 
         # does not inherit BaseProcessor because this is a group-level operation
@@ -216,7 +214,9 @@ class GroupGLM:
         self._datasink_dir = os.path.join(self.output_path, 'output')
 
 
-    def build(self, input_data, name=None):
+    def build(self, input_data, name=None, thresholding=True, cluster_thresholding=True,
+              primary_threshold=.005, extent_threshold=.05, minimum_voxels=0,
+              primary_threshold_fwe_correct=False):
 
         self.input_data = input_data
 
@@ -282,6 +282,47 @@ class GroupGLM:
                 ('con_images', 'contrast.@con')
             ])
         ])
+
+        if thresholding:
+
+            # NOTE: spm calls extent threshold the number of voxels, but extent
+            # threshold, as per literature, refers to cluster p value threshold
+            # (which is what we'll stay true to here)
+
+            if cluster_thresholding:
+                # threshold map and clusters
+                self.level2thresh = Node(
+                        Threshold(
+                            contrast_index=1,
+                            use_topo_fdr=True,
+                            use_fwe_correction=primary_threshold_fwe_correct,
+                            extent_threshold=minimum_voxels, # this specifies n VOXELS
+                            height_threshold=primary_threshold,
+                            height_threshold_type='p-value',
+                            extent_fdr_p_threshold=extent_threshold # this specifies cluser p value
+                        ),
+                        name="level2thresh"
+                )
+            else:
+                # threshold map but not clusters
+                self.level2thresh = Node(
+                        Threshold(
+                            contrast_index=1,
+                            use_topo_fdr=False,
+                            extent_threshold=minimum_voxels,
+                        ),
+                        name="level2thresh"
+                )
+
+            self.workflow.connect([
+                (self.level2conestimate, self.level2thresh, [
+                    ('spm_mat_file', 'spm_mat_file'),
+                    ('spmT_images', 'stat_image')
+                ]),
+                (self.level2conestimate, self._datasink, [
+                    ('thresholded_map', 'contrast.@threshold')
+                ])
+            ])
 
 
     def run(self, parallel=True, n_procs=8):
