@@ -5,7 +5,10 @@ from .run_manager import (
 )
 from .glm import GLM, stack_designs, GroupGLM
 from .converters import convert_to_nifti
-from .roi import GlasserAtlas, binarize_mask_array, ROIDirectory, MNI_to_voxels, sphere_mask
+from .roi import (
+    GlasserAtlas, binarize_mask_array, ROIDirectory, MNI_to_voxels, roi_mask,
+    extract_voxels
+)
 from .timecourse import percent_signal_change
 
 __all__ = [
@@ -27,5 +30,5 @@ __all__ = [
     'binarize_mask_array',
     'ROIDirectory',
     'MNI_to_voxels',
-    'sphere_mask',
+    'roi_mask',
     'percent_signal_change']
