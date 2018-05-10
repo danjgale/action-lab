@@ -183,12 +183,14 @@ def MNI_to_voxels(x, y, z):
     return (-x + 90)/2, (y + 126)/2, (z + 72)/2
 
 
-def sphere_mask(coordinates, radius, fn, in_file=None):
+def roi_mask(coordinates, size, fn, mask_type='box', in_file=None):
+
+    """Make binary sphere or box mask centered on voxel coordinates"""
 
     # set up temp files
     output_dir = os.path.dirname(fn)
     point_file = os.path.join(output_dir, 'point.nii.gz')
-    sphere_file = os.path.join(output_dir, 'sphere.nii.gz')
+    mask_file = os.path.join(output_dir, 'mask.nii.gz')
 
     if in_file is None:
         in_file = Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
@@ -199,15 +201,15 @@ def sphere_mask(coordinates, radius, fn, in_file=None):
                        out_data_type='float')
     point.run()
     # make sphere from point
-    sphere = ImageMaths(in_file=point_file, out_file=sphere_file,
-                        op_string='-kernel sphere %d -fmean' % radius,
+    sphere = ImageMaths(in_file=point_file, out_file=mask_file,
+                        op_string='-kernel {} {} -fmean'.format(mask_type, size),
                         out_data_type='float')
     sphere.run()
     # binarize sphere mask
-    binarize = ImageMaths(in_file=sphere_file, op_string='-bin', out_file=fn,
+    binarize = ImageMaths(in_file=mask_file, op_string='-bin', out_file=fn,
                           out_data_type='float')
     binarize.run()
 
     # remove temp files
     os.remove(point_file)
-    os.remove(sphere_file)
+    os.remove(mask_file)
