@@ -1,4 +1,4 @@
 
-from .protocol import ProtocolManager
+from .protocol import ProtocolManager, expand_events
 
-__all__ = ['ProtocolManager']
+__all__ = ['ProtocolManager', 'expand_events']
