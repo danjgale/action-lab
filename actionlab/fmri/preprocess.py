@@ -468,7 +468,7 @@ def _segment_anat(fn, output_dir):
     return os.path.join(output_dir, 'fast_seg_2.nii.gz'), os.path.join(output_dir, 'fast_seg_0.nii.gz')
 
 
-def _normalize_segment(transform, mask, mat_file, nonlinear=False,
+def _normalize_segment(transform, mask, mat_file=None, nonlinear=False,
                        standard='MNI152_T1_2mm_brain.nii.gz'):
     """Normalize binary segment mask. `transform` is either a coeff nifti file
     if nonlinear, or a matrix file if linear.
@@ -568,7 +568,7 @@ class SubjectConfounds(object):
         # file-based operations done in place
         if transform is not None:
             for i in [self.WM, self.CSF]:
-                _normalize_segment(self.transform, i, nonlinear)
+                _normalize_segment(self.transform, i, nonlinear=nonlinear)
                 _binarize(i, self.binarization_threshold)
 
         # get timeseries of WM and CSF for each run (returns list of runs)
