@@ -268,8 +268,8 @@ def spatially_smooth(input_files, fwhm, output_dir=None):
     if output_dir is None:
         smooth = spm.Smooth(in_files=input_files, fwhm=fwhm, out_prefix='smoothed_')
     else:
-        smooth = spm.Smooth(in_files=input_files, fwhm=fwhm, paths=output_dir,
-                            out_prefix='smoothed_')
+        smooth = spm.Smooth(in_files=input_files, fwhm=fwhm
+                            out_prefix=output_dir)
     smooth.run()
 
     if compressed:
