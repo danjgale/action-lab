@@ -7,9 +7,8 @@ from .glm import GLM, stack_designs, GroupGLM
 from .converters import convert_to_nifti
 from .roi import (
     GlasserAtlas, binarize_mask_array, ROIDirectory, MNI_to_voxels, roi_mask,
-    extract_voxels
+    extract_voxels, percent_signal_change, ROI
 )
-from .timecourse import percent_signal_change
 
 __all__ = [
     'Preprocessor',
@@ -31,4 +30,5 @@ __all__ = [
     'ROIDirectory',
     'MNI_to_voxels',
     'roi_mask',
-    'percent_signal_change']
+    'percent_signal_change',
+    'ROI']
