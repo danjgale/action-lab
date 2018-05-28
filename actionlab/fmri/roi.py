@@ -8,10 +8,121 @@ import subprocess
 import json
 import numpy as np
 import pandas as pd
+from scipy.stats import zscore
 from nipype.interfaces.fsl import ImageMaths, Info
 import nilearn
 from nilearn.input_data import NiftiMasker, MultiNiftiMasker
 from nibabel import nifti1
+
+
+def _check_means(x):
+    """Remove voxels with means equal to 0"""
+    means = np.mean(x, axis=0)
+    if any(means == 0):
+        n_zeros = len(np.where(means == 0)[0])
+        n_voxels = len(means)
+        print('{} out of {} voxels with mean == 0; removing...'.format(n_zeros, n_voxels))
+        nonzero_ix = np.where(means != 0)[0]
+        return x[:, nonzero_ix]
+    else:
+        return x
+
+
+def percent_signal_change(x, baseline_index=None):
+    """Compute percent signal change for each voxel (column) in array.
+    Baseline must be specified and x must be a time * voxel array.
+    """
+
+    if baseline_index is not None:
+        signal_mean = np.mean(x[baseline_index, :], axis=0)
+    else:
+        signal_mean = np.mean(x, axis=0)
+
+    signal = 100 * ((x - signal_mean)/signal_mean)
+    return signal
+
+
+def _percent_signal_change_wrapper(x):
+
+    baseline_index = np.where(x['baseline'] == 1)[0]
+
+    y = percent_signal_change(np.vstack(x['voxels']), baseline_index.tolist())
+    x['scaled'] = list(y)
+    return x
+
+
+def standardize(x):
+    z = zscore(np.vstack(x['voxels']), axis=0)
+    x['scaled'] = list(z)
+    return x
+
+
+def _average_signal(x):
+    """Average signal across trials of a single condition"""
+
+    list_ = []
+    for name, g in x.groupby(('run', 'trial')):
+        list_.append(g['signal'].values)
+
+    # get average signal for each time in (trial * time) array
+    return np.nanmean(np.array(list_), axis=0)
+
+
+class ROI:
+
+    def __init__(self, data, infer_trials=False, name=None):
+
+        if isinstance(data, str):
+            self.data = pd.read_csv(data)
+        else:
+            self.data = data
+
+        self.name = name
+
+    def clean(self):
+        """ Remove any zeroed voxels """
+        self.data['voxels'] = pd.Series(list(_check_means(np.vstack(self.data['voxels']))))
+
+    def scale(self, percent_signal_change=True, baseline_index=None):
+
+        if percent_signal_change:
+
+            if baseline_index is not None:
+                self.data['baseline'] = 0
+                self.data['baseline'].iloc[baseline_index] = 1
+
+            self.data = self.data.groupby('run').apply(
+                lambda x: _percent_signal_change_wrapper(x)
+            )
+        else:
+            self.data = self.data.groupby('run').apply(
+                lambda x: standardize(x)
+            )
+
+
+    def pad_epoch(self, epoch_name, max_size, at_start=True):
+        pass
+
+    def mean_signal(self):
+
+        if 'scaled' in self.data.columns:
+            self.data['signal'] = list(
+                np.nanmean(np.vstack(self.data['scaled']), axis=1)
+            )
+        else:
+            self.data['voxels'] = list(
+                np.nanmean(np.vstack(self.data['voxels']), axis=1)
+            )
+
+    def avg_per_condition(self):
+
+        df = self.data.groupby('condition').apply(_average_signal)
+
+        self.condition_avg = pd.DataFrame({
+            'condition': df.index, 'signal': df.values
+        })
+        if self.name is not None:
+            self.condition_avg['roi'] = self.name
 
 
 def binarize_mask_array(x, threshold=None):
