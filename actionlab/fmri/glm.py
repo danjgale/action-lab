@@ -404,7 +404,8 @@ def single_trial_design(design, condition_col='condition', lm_type='lss'):
 class LSS(BaseProcessor):
 
 
-    def __init__(self):
+    def __init__(self, sub_id, input_data, output_path, zipped=True,
+                 input_file_endswith=None, sort_input_files=True):
 
         BaseProcessor.__init__(self, sub_id, input_data, output_path, zipped,
                                input_file_endswith,
@@ -412,7 +413,7 @@ class LSS(BaseProcessor):
                                datasink_parameterization=True)
 
 
-    def build(self, design_files, realign_params, output_path=None,
+    def build(self, design, realign_params=None, output_path=None,
               high_pass_filter_cutoff=100, TR=2.0, input_units='secs',
               workflow_name='glm', design_onset_col='onset',
               design_duration_col='duration', design_condition_col='condition'):
