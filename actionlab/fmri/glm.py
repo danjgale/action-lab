@@ -396,13 +396,19 @@ def single_trial_design(design, condition_col='condition', lm_type='lss'):
         df = design.copy()
 
         # label condition based on trial vs rest
-        row[condition_col] = 'trial'
         df.drop(ix, inplace=True)
         df[condition_col] = 'other'
 
-        design_list.append(pd.concat([row, df]))
+        design_list.append(df.append(row))
 
     return design_list
+
+def _unpack_run_map(x):
+    list_ = []    
+    for k, v in x.items():
+        for i in v:
+            list_.append((k, i))
+    return list_ 
 
 
 class LSS(BaseProcessor):
@@ -441,13 +447,16 @@ class LSS(BaseProcessor):
 
         # create mapping between run and the design matrices for that run
         self.run_design_map = dict(zip(self._input_files, design_matrices))
+        
+        self.run_design_pairs = _unpack_run_map(self.run_design_map)
 
         # create mapping between run and realign params
         if self.realign_params is not None:
             self.run_realign_map = dict(zip(self._input_files, self.realign_params))
+            self.run_realign_pairs = _unpack_run_map(self.run_realign_map)
         else:
             self.run_realign_map = None
-
+            self.run_realign_pairs = None
 
     def run(self, parallel=True, print_header=True, n_procs=8):
 
