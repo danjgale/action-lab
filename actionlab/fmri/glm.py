@@ -46,33 +46,31 @@ def stack_designs(design_list, onset_col='onset', duration_col='duration'):
     return pd.concat(concat_list, axis=0)
 
 
+def bunch_single_design(df, condition_col, onset_col='onset', duration_col='duration'):
+    """Create bunch object from a design dataframe"""
+    grouped = df.groupby(condition_col)
+    # each condition has a list of onsets, durations, and amplitudes associated
+    # with it
+    names = []
+    onsets = []
+    durations = []
+    for name, g in grouped:
+        names.append(name)
+        onsets.append(g[onset_col].tolist())
+        durations.append(g[duration_col].tolist())
+
+    return Bunch(conditions=names, onsets=onsets, durations=durations)
+
+
 def bunch_designs(design_list, condition_col, onset_col='onset',
                   duration_col='duration'):
     """Create bunch object (event, start, duration, amplitudes) for
     SpecifyModel() using existing event files
     """
-
     design_tables = _check_design_input(design_list)
-
     bunch_list = []
     for i in design_tables:
-        grouped = i.groupby(condition_col)
-
-        # each condition has a list of onsets, durations, and amplitudes associated
-        # with it
-        names = []
-        onsets = []
-        durations = []
-        amplitudes = []
-        for name, g in grouped:
-            names.append(name)
-            onsets.append(g[onset_col].tolist())
-            durations.append(g[duration_col].tolist())
-            amplitudes.append(
-                np.ones(len(g[onset_col].tolist()), dtype=np.int8).tolist()
-            )
-
-        bunch_list.append(Bunch(conditions=names, onsets=onsets, durations=durations))
+        bunch_list.append(bunch_single_design(i, condition_col, onset_col, duration_col))
 
     return bunch_list
 
@@ -404,11 +402,11 @@ def single_trial_design(design, condition_col='condition', lm_type='lss'):
     return design_list
 
 def _unpack_run_map(x):
-    list_ = []    
+    list_ = []
     for k, v in x.items():
         for i in v:
             list_.append((k, i))
-    return list_ 
+    return list_
 
 
 class LSS(BaseProcessor):
@@ -447,99 +445,106 @@ class LSS(BaseProcessor):
 
         # create mapping between run and the design matrices for that run
         self.run_design_map = dict(zip(self._input_files, design_matrices))
-        
+
         self.run_design_pairs = _unpack_run_map(self.run_design_map)
 
         # create mapping between run and realign params
         if self.realign_params is not None:
             self.run_realign_map = dict(zip(self._input_files, self.realign_params))
-            self.run_realign_pairs = _unpack_run_map(self.run_realign_map)
         else:
             self.run_realign_map = None
-            self.run_realign_pairs = None
+
 
     def run(self, parallel=True, print_header=True, n_procs=8):
 
-        # iterate through runs
-        for i, (run, designs) in enumerate(self.run_design_map.items()):
-            # iterate through trials (i.e. design matrices of each trial)
-            for j, trial in enumerate(designs):
-                print(i)
-                print(j)
 
-                self.sub_info = bunch_designs([trial], self.design_condition_col,
-                                        onset_col=self.design_onset_col,
-                                        duration_col=self.design_duration_col)
+        for run, design in self.run_design_map.items():
 
-                if self.run_realign_map is None:
-                    # exclude realignment parameters
-                    self.model_spec = Node(
-                        SpecifySPMModel(
-                            subject_info = self.sub_info,
-                            high_pass_filter_cutoff = self.high_pass_filter_cutoff,
-                            time_repetition=self.TR,
-                            input_units=self.input_units,
-                            output_units=self.input_units,
-                            functional_runs = run,
-                            concatenate_runs=False
-                        ),
-                        name='model_spec'
-                    )
-                else:
-                    # include realignment parameters
-                    self.model_spec = Node(
-                        SpecifySPMModel(
-                            subject_info = self.sub_info,
-                            high_pass_filter_cutoff = self.high_pass_filter_cutoff,
-                            time_repetition=self.TR,
-                            input_units=self.input_units,
-                            output_units=self.input_units,
-                            functional_runs = run,
-                            realignment_parameters = self.realign_params,
-                            concatenate_runs=False
-                        ),
-                        name='model_spec'
-                    )
+            self.infosource = Node(
+                IdentityInterface(fields=['design']),
+                name='infosources'
+            )
+            self.infosource.iterables = [('design', design)]
 
-                # ------------
-                # GLM Workflow
-                # ------------
-
-                self.design = Node(
-                    spm.Level1Design(
-                        bases={'hrf': {'derivs': [1, 0]}},
-                        timing_units=self.input_units,
-                        interscan_interval=self.TR
+            if self.run_realign_map is None:
+                # exclude realignment parameters
+                self.model_spec = Node(
+                    SpecifySPMModel(
+                        functional_runs=run,
+                        high_pass_filter_cutoff = self.high_pass_filter_cutoff,
+                        time_repetition=self.TR,
+                        input_units=self.input_units,
+                        output_units=self.input_units,
+                        concatenate_runs=False
                     ),
-                    name='design'
+                    name='model_spec'
+                )
+            else:
+                # include realignment parameters
+                self.model_spec = Node(
+                    SpecifySPMModel(
+                        high_pass_filter_cutoff = self.high_pass_filter_cutoff,
+                        time_repetition=self.TR,
+                        input_units=self.input_units,
+                        output_units=self.input_units,
+                        realignment_parameters = self.realign_params[run],
+                        concatenate_runs=False
+                    ),
+                    name='model_spec'
                 )
 
-                self.estimate_model = Node(
-                    spm.EstimateModel(
-                        estimation_method={'Classical': 1}
-                    ),
-                    name='model_est'
-                )
+            # ------------
+            # GLM Workflow
+            # ------------
 
-                self.workflow=Workflow(name=self.workflow_name)
-                self.workflow.base_dir = self._working_dir
-                self.workflow.connect([
-                    (self.model_spec, self.design, [('session_info', 'session_info')]),
-                    (self.design, self.estimate_model, [('spm_mat_file', 'spm_mat_file')])
+            self.design = Node(
+                spm.Level1Design(
+                    bases={'hrf': {'derivs': [1, 0]}},
+                    timing_units=self.input_units,
+                    interscan_interval=self.TR
+                ),
+                name='design'
+            )
+
+            self.estimate_model = Node(
+                spm.EstimateModel(
+                    estimation_method={'Classical': 1}
+                ),
+                name='model_est'
+            )
+
+            # temporary functions. TODO: come up with better way to place these so that
+            # they're hidden but specific to class
+            # def _get_run(x):
+            #     return x[0]
+
+            def _get_design(x):
+                bunch = single_trial_design(x[1], self.design_onset_col,
+                    self.design_duration_col, self.design_condition_col)
+                return bunch
+
+            self.workflow=Workflow(name=self.workflow_name)
+            self.workflow.base_dir = self._working_dir
+            self.workflow.connect([
+                (self.infosource, self.model_spec, [
+                    (('design', _get_design), 'subject_info')
+                ]),
+                (self.model_spec, self.design, [('session_info', 'session_info')]),
+                (self.design, self.estimate_model, [('spm_mat_file', 'spm_mat_file')])
+            ])
+
+            self.workflow.connect([
+                (self.design, self.datasink, [('spm_mat_file', 'run{}_trial{}.pre-estimate'.format(i, j))]),
+                (self.estimate_model, self.datasink, [
+                    ('spm_mat_file', 'run{}_trial{}.@spm'.format(i, j)),
+                    ('beta_images', 'run{}_trial{}.@beta'.format(i, j)),
+                    ('residual_image', 'run{}_trial{}.@res'.format(i, j)),
+                    ('RPVimage', 'run{}_trial{}.@rpv'.format(i, j))
                 ])
+            ])
 
-                self.workflow.connect([
-                    (self.design, self.datasink, [('spm_mat_file', 'run{}_trial{}.pre-estimate'.format(i, j))]),
-                    (self.estimate_model, self.datasink, [
-                        ('spm_mat_file', 'run{}_trial{}.@spm'.format(i, j)),
-                        ('beta_images', 'run{}_trial{}.@beta'.format(i, j)),
-                        ('residual_image', 'run{}_trial{}.@res'.format(i, j)),
-                        ('RPVimage', 'run{}_trial{}.@rpv'.format(i, j))
-                    ])
-                ])
-
-                if parallel:
-                    self.workflow.run('MultiProc', plugin_args = {'n_procs': n_procs})
-                else:
-                    self.workflow.run()
+            if parallel:
+                self.workflow.run('MultiProc', plugin_args = {'n_procs': n_procs})
+            else:
+                self.workflow.run()
         return self
