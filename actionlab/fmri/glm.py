@@ -17,6 +17,17 @@ from nipype.interfaces.utility import IdentityInterface
 from .base import BaseProcessor
 
 
+def _check_design_input(design_list):
+    if all(isinstance(i, str) for i in design_list):
+        design_tables = [pd.read_csv(i, sep='\t') for i in design_list]
+    elif all(isinstance(i, pd.DataFrame) for i in design_list):
+        design_tables = design_list
+    else:
+        raise ValueError('Ensure that designs are a list of str or list of pd.DataFrame')
+
+    return design_tables
+
+
 def stack_designs(design_list, onset_col='onset', duration_col='duration'):
     """Vertically concatenate designs for concatenated runs in model fitting.
 
@@ -24,12 +35,7 @@ def stack_designs(design_list, onset_col='onset', duration_col='duration'):
     Onsets from each run are adjusted to reflect new timing of concatenation.
     """
 
-    if all(isinstance(i, str) for i in design_list):
-        design_tables = [pd.read_csv(i, sep='\t') for i in design_list]
-    elif all(isinstance(i, pd.DataFrame) for i in design_list):
-        design_tables = design_list
-    else:
-        raise ValueError('Ensure that designs are a list of str or list of pd.DataFrame')
+    design_tables = _check_design_input(design_list)
 
     concat_list = []
     total_seconds = 0
@@ -46,12 +52,7 @@ def bunch_designs(design_list, condition_col, onset_col='onset',
     SpecifyModel() using existing event files
     """
 
-    if all(isinstance(i, str) for i in design_list):
-        design_tables = [pd.read_csv(i, sep='\t') for i in design_list]
-    elif all(isinstance(i, pd.DataFrame) for i in design_list):
-        design_tables = design_list
-    else:
-        raise ValueError('Ensure that designs are a list of str or list of pd.DataFrame')
+    design_tables = _check_design_input(design_list)
 
     bunch_list = []
     for i in design_tables:
@@ -386,8 +387,11 @@ class GroupGLM:
 
 def single_trial_design(design, condition_col='condition', lm_type='lss'):
 
+    if isinstance(design, str):
+        design = pd.read_csv(design, sep='\t')
+
     design_list = []
-    for ix, row in df.iterrow():
+    for ix, row in design.iterrows():
 
         df = design.copy()
 
@@ -426,8 +430,13 @@ class LSS(BaseProcessor):
         self.TR = TR
         self.input_units = input_units
 
+        self.design_onset_col = design_onset_col
+        self.design_duration_col = design_duration_col
+        self.design_condition_col = design_condition_col
+
         # create list with each element as a list containing single-trial design matrices for
         # a given run
+
         design_matrices = [single_trial_design(i, design_condition_col) for i in self.design]
 
         # create mapping between run and the design matrices for that run
@@ -443,13 +452,15 @@ class LSS(BaseProcessor):
     def run(self, parallel=True, print_header=True, n_procs=8):
 
         # iterate through runs
-        for i, (run, designs) in enumerate(self.run_design_map):
+        for i, (run, designs) in enumerate(self.run_design_map.items()):
             # iterate through trials (i.e. design matrices of each trial)
             for j, trial in enumerate(designs):
+                print(i)
+                print(j)
 
-                self.sub_info = bunch_designs([trial], design_condition_col,
-                                        onset_col=design_onset_col,
-                                        duration_col=design_duration_col)
+                self.sub_info = bunch_designs([trial], self.design_condition_col,
+                                        onset_col=self.design_onset_col,
+                                        duration_col=self.design_duration_col)
 
                 if self.run_realign_map is None:
                     # exclude realignment parameters
@@ -501,7 +512,7 @@ class LSS(BaseProcessor):
                     name='model_est'
                 )
 
-                self.glm_workflow=Workflow(name=self.workflow_name)
+                self.workflow=Workflow(name=self.workflow_name)
                 self.workflow.base_dir = self._working_dir
                 self.workflow.connect([
                     (self.model_spec, self.design, [('session_info', 'session_info')]),
@@ -509,7 +520,7 @@ class LSS(BaseProcessor):
                 ])
 
                 self.workflow.connect([
-                    (self.design, self.datasink, [('spm_mat_file', 'run{}_trial{}.pre-estimate'.format(i))]),
+                    (self.design, self.datasink, [('spm_mat_file', 'run{}_trial{}.pre-estimate'.format(i, j))]),
                     (self.estimate_model, self.datasink, [
                         ('spm_mat_file', 'run{}_trial{}.@spm'.format(i, j)),
                         ('beta_images', 'run{}_trial{}.@beta'.format(i, j)),
