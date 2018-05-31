@@ -12,7 +12,7 @@ from nipype.interfaces import fsl, spm, freesurfer
 from nipype.interfaces.io import SelectFiles, DataSink
 from nipype.interfaces.base import Bunch
 from nipype.algorithms.modelgen import SpecifyModel, SpecifySPMModel
-from nipype.interfaces.utility import IdentityInterface
+from nipype.interfaces.utility import IdentityInterface, Function
 
 from .base import BaseProcessor
 
@@ -60,6 +60,14 @@ def bunch_single_design(df, condition_col, onset_col='onset', duration_col='dura
         durations.append(g[duration_col].tolist())
 
     return Bunch(conditions=names, onsets=onsets, durations=durations)
+
+
+def _bunch_single_design_wrapper(df, condition_col, onset_col='onset', duration_col='duration'):
+    """ Wrapper to work within a Nipype pipeline"""
+    import pandas as pd
+    from nipype.interfaces.base import Bunch
+    return bunch_single_design(df, condition_col, onset_col, duration_col)
+
 
 
 def bunch_designs(design_list, condition_col, onset_col='onset',
@@ -458,13 +466,25 @@ class LSS(BaseProcessor):
     def run(self, parallel=True, print_header=True, n_procs=8):
 
 
-        for run, design in self.run_design_map.items():
+        for i, (run, design) in enumerate(self.run_design_map.items()):
 
             self.infosource = Node(
                 IdentityInterface(fields=['design']),
                 name='infosources'
             )
             self.infosource.iterables = [('design', design)]
+
+            self.subject_info = Node(
+                Function(
+                    input_names=['df', 'condition_col', 'onset_col', 'duration_col'],
+                    output_names=['bunch'],
+                    function=_bunch_single_design_wrapper
+                ),
+                name='subject_info'
+            )
+            self.subject_info.inputs.condition_col = self.design_condition_col
+            self.subject_info.inputs.onset_col = self.design_onset_col
+            self.subject_info.inputs.duration_col = self.design_duration_col
 
             if self.run_realign_map is None:
                 # exclude realignment parameters
@@ -519,27 +539,41 @@ class LSS(BaseProcessor):
             #     return x[0]
 
             def _get_design(x):
-                bunch = single_trial_design(x[1], self.design_onset_col,
-                    self.design_duration_col, self.design_condition_col)
-                return bunch
+                grouped = x.groupby(self.design_condition_col)
+                # each condition has a list of onsets, durations, and amplitudes associated
+                # with it
+                names = []
+                onsets = []
+                durations = []
+                for name, g in grouped:
+                    names.append(name)
+                    onsets.append(g[self.design_onset_col].tolist())
+                    durations.append(g[self.design_duration_col].tolist())
 
+                return Bunch(conditions=names, onsets=onsets, durations=durations)
+
+
+                #bunch = bunch_single_design(x[1], self.design_onset_col,
+                #    self.design_duration_col, self.design_condition_col)
+                #return bunch
+
+            
             self.workflow=Workflow(name=self.workflow_name)
             self.workflow.base_dir = self._working_dir
             self.workflow.connect([
-                (self.infosource, self.model_spec, [
-                    (('design', _get_design), 'subject_info')
-                ]),
+                (self.infosource, self.subject_info, [('design', 'df')]),
+                (self.subject_info, self.model_spec, [('info', 'subject_info')]),
                 (self.model_spec, self.design, [('session_info', 'session_info')]),
                 (self.design, self.estimate_model, [('spm_mat_file', 'spm_mat_file')])
             ])
 
             self.workflow.connect([
-                (self.design, self.datasink, [('spm_mat_file', 'run{}_trial{}.pre-estimate'.format(i, j))]),
+                (self.design, self.datasink, [('spm_mat_file', 'run{}.pre-estimate'.format(i))]),
                 (self.estimate_model, self.datasink, [
-                    ('spm_mat_file', 'run{}_trial{}.@spm'.format(i, j)),
-                    ('beta_images', 'run{}_trial{}.@beta'.format(i, j)),
-                    ('residual_image', 'run{}_trial{}.@res'.format(i, j)),
-                    ('RPVimage', 'run{}_trial{}.@rpv'.format(i, j))
+                    ('spm_mat_file', 'run{}.@spm'.format(i)),
+                    ('beta_images', 'run{}.@beta'.format(i)),
+                    ('residual_image', 'run{}.@res'.format(i)),
+                    ('RPVimage', 'run{}.@rpv'.format(i))
                 ])
             ])
 
