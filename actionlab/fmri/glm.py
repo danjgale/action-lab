@@ -62,10 +62,11 @@ def bunch_single_design(df, condition_col, onset_col='onset', duration_col='dura
     return Bunch(conditions=names, onsets=onsets, durations=durations)
 
 
-def _bunch_single_design_wrapper(df, condition_col, onset_col='onset', duration_col='duration'):
+def _bunch_single_design_wrapper(design, condition_col, onset_col='onset', duration_col='duration'):
     """ Wrapper to work within a Nipype pipeline"""
     import pandas as pd
     from nipype.interfaces.base import Bunch
+    df = pd.read_csv(design, sep='\t')
     return bunch_single_design(df, condition_col, onset_col, duration_col)
 
 
@@ -352,45 +353,6 @@ class GroupGLM:
         return self
 
 
-# class LSS(BaseProcessor):
-
-
-#     def __init__(self):
-
-#         BaseProcessor.__init__(self, sub_id, input_data, output_path, zipped,
-#                                input_file_endswith,
-#                                sort_input_files=sort_input_files,
-#                                datasink_parameterization=True)
-
-#     def build(self, design_files, contrasts, realign_params, output_path=None,
-#               high_pass_filter_cutoff=100, TR=2.0, input_units='secs',
-#               workflow_name='glm', design_onset_col='onset',
-#               design_duration_col='duration', design_condition_col='condition'):
-
-
-# def bunch_trial(trial_number, design_file, condition_col, onset_col='onset',
-#                   duration_col='duration', event_col='event'):
-#     """Create bunch object (event, start, duration, amplitudes) for a single
-#     trial vs other trials, as per LSS modelling.
-#     """
-
-#     df = pd.read_csv(design_file, sep='\t')
-
-#     names = []
-#     onsets = []
-#     durations = []
-#     amplitudes = []
-
-
-#     trial = df.iloc[trial_number]
-#     other_trials = df.drop(trial_number, axis=0)
-
-#     names = [[str(trial_number)], ['other']]
-#     onsets = [[trial[onset_col]], other_trials[onset_col].tolist()]
-#     durations = [[trial[duration_col]], other_trials[duration_col].tolist()]
-
-#     return Bunch(conditions=names, onsets=onsets, durations=durations)
-
 def single_trial_design(design, condition_col='condition', lm_type='lss'):
 
     if isinstance(design, str):
@@ -415,6 +377,19 @@ def _unpack_run_map(x):
         for i in v:
             list_.append((k, i))
     return list_
+
+
+def _save_designs(path, design_map):
+    dict_ = []
+    for i, (k, v) in enumerate(design_map):
+        list_ []
+        for j in v:
+            fn = os.path.join(path, 'run{}_trial{}.csv')
+            j.to_csv()
+            list_.append(fn)
+        dict_[k] = list_
+
+    return dict_
 
 
 class LSS(BaseProcessor):
@@ -462,11 +437,16 @@ class LSS(BaseProcessor):
         else:
             self.run_realign_map = None
 
+        # create/save design files
+        design_dir = os.path.join(self._datasink_dir, 'design')
+        if not os.path.exist(design_dir):
+            os.makedir(design_dir)
+        self._design_file_map = _save_designs(design_dir, self.design_map)
+
 
     def run(self, parallel=True, print_header=True, n_procs=8):
 
-
-        for i, (run, design) in enumerate(self.run_design_map.items()):
+        for i, (run, design) in enumerate(self._design_file_map.items()):
 
             self.infosource = Node(
                 IdentityInterface(fields=['design']),
@@ -476,7 +456,7 @@ class LSS(BaseProcessor):
 
             self.subject_info = Node(
                 Function(
-                    input_names=['df', 'condition_col', 'onset_col', 'duration_col'],
+                    input_names=['design', 'condition_col', 'onset_col', 'duration_col'],
                     output_names=['bunch'],
                     function=_bunch_single_design_wrapper
                 ),
@@ -557,11 +537,11 @@ class LSS(BaseProcessor):
                 #    self.design_duration_col, self.design_condition_col)
                 #return bunch
 
-            
+
             self.workflow=Workflow(name=self.workflow_name)
             self.workflow.base_dir = self._working_dir
             self.workflow.connect([
-                (self.infosource, self.subject_info, [('design', 'df')]),
+                (self.infosource, self.subject_info, [('design', 'design')]),
                 (self.subject_info, self.model_spec, [('info', 'subject_info')]),
                 (self.model_spec, self.design, [('session_info', 'session_info')]),
                 (self.design, self.estimate_model, [('spm_mat_file', 'spm_mat_file')])
