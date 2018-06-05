@@ -66,8 +66,21 @@ def _bunch_single_design_wrapper(design, condition_col, onset_col='onset', durat
     """ Wrapper to work within a Nipype pipeline"""
     import pandas as pd
     from nipype.interfaces.base import Bunch
-    df = pd.read_csv(design, sep='\t')
-    return bunch_single_design(df, condition_col, onset_col, duration_col)
+   
+    df = pd.read_csv(design)
+    grouped = df.groupby(condition_col)
+    # each condition has a list of onsets, durations, and amplitudes associated
+    # with it
+    names = []
+    onsets = []
+    durations = []
+    
+    for name, g in grouped:
+        names.append(name)
+        onsets.append(g[onset_col].tolist())
+        durations.append(g[duration_col].tolist())
+
+    return Bunch(conditions=names, onsets=onsets, durations=durations)
 
 
 
@@ -129,7 +142,7 @@ class GLM(BaseProcessor):
         # Model Nodes
         # -----------
 
-        self.sub_info = bunch_designs(design_files, design_condition_col,
+        self.sub_info = bunch_designs(self.design, design_condition_col,
                                       onset_col=design_onset_col,
                                       duration_col=design_duration_col)
 
@@ -380,12 +393,12 @@ def _unpack_run_map(x):
 
 
 def _save_designs(path, design_map):
-    dict_ = []
-    for i, (k, v) in enumerate(design_map):
-        list_ []
-        for j in v:
-            fn = os.path.join(path, 'run{}_trial{}.csv')
-            j.to_csv()
+    dict_ = {}
+    for i, (k, v) in enumerate(design_map.items()):
+        list_ = []
+        for j, trial in enumerate(v):
+            fn = os.path.join(path, 'run{}_trial{}.csv'.format(i, j))
+            trial.to_csv(fn, index=False)
             list_.append(fn)
         dict_[k] = list_
 
@@ -438,13 +451,17 @@ class LSS(BaseProcessor):
             self.run_realign_map = None
 
         # create/save design files
-        design_dir = os.path.join(self._datasink_dir, 'design')
-        if not os.path.exist(design_dir):
-            os.makedir(design_dir)
-        self._design_file_map = _save_designs(design_dir, self.design_map)
+        design_dir = os.path.join(self._sub_output_dir, 'design')
+        if not os.path.exists(design_dir):
+            os.makedirs(design_dir)
+        self._design_file_map = _save_designs(design_dir, self.run_design_map)
 
 
     def run(self, parallel=True, print_header=True, n_procs=8):
+
+
+        # specificy substitutions for datasink
+        self.datasink.inputs.substitutions = [('_design*run*_', ''), ('.csv', '')]
 
         for i, (run, design) in enumerate(self._design_file_map.items()):
 
@@ -483,11 +500,12 @@ class LSS(BaseProcessor):
                 # include realignment parameters
                 self.model_spec = Node(
                     SpecifySPMModel(
+                        functional_runs=run,
                         high_pass_filter_cutoff = self.high_pass_filter_cutoff,
                         time_repetition=self.TR,
                         input_units=self.input_units,
                         output_units=self.input_units,
-                        realignment_parameters = self.realign_params[run],
+                        realignment_parameters = self.run_realign_map[run],
                         concatenate_runs=False
                     ),
                     name='model_spec'
@@ -542,7 +560,7 @@ class LSS(BaseProcessor):
             self.workflow.base_dir = self._working_dir
             self.workflow.connect([
                 (self.infosource, self.subject_info, [('design', 'design')]),
-                (self.subject_info, self.model_spec, [('info', 'subject_info')]),
+                (self.subject_info, self.model_spec, [('bunch', 'subject_info')]),
                 (self.model_spec, self.design, [('session_info', 'session_info')]),
                 (self.design, self.estimate_model, [('spm_mat_file', 'spm_mat_file')])
             ])
@@ -553,7 +571,8 @@ class LSS(BaseProcessor):
                     ('spm_mat_file', 'run{}.@spm'.format(i)),
                     ('beta_images', 'run{}.@beta'.format(i)),
                     ('residual_image', 'run{}.@res'.format(i)),
-                    ('RPVimage', 'run{}.@rpv'.format(i))
+                    ('RPVimage', 'run{}.@rpv'.format(i)),
+                    ('Cbetas', 'run{}.@sdbeta'.format(i))
                 ])
             ])
 
