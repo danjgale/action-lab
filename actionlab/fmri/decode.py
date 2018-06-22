@@ -127,7 +127,7 @@ def cross_decode(train_data, classifier, test_data, data_column='voxels', respon
 
     if return_as_lists:
         # used for Decoder to keep API consistent
-        return [accuracy], [test_y], [yhat]
+        return [accuracy], [test_y], [yhat], [model]
     else:
         return accuracy, test_y, yhat, model
 
@@ -174,15 +174,17 @@ class Decoder:
                       conditions=None):
 
         if conditions is not None:
-            cv_data = self.data[self.data[self.response_column].isin(conditions)]
+            self.train_data = self.data[self.data[self.response_column].isin(conditions)]
+            self.test_data = test_data[test_data[self.response_column].isin(conditions)]
         else:
-            cv_data = self.data
+            self.train_data = self.data
+            self.test_data = test_data
 
         self.accuracies, self.test_y, self.yhat, self.classifier = (
-            cross_decode(cv_data, self.classifier, test_data, self.data_column,
+            cross_decode(self.train_data, self.classifier, self.test_data, self.data_column,
                          self.response_column, self.scaling, mean_centre,
-                         shuffle_data, return_as_lists=True, scale_min=scale_min,
-                        scale_max=scale_max)
+                         shuffle_data, return_as_lists=True,
+                         scale_min=self.scale_min, scale_max=self.scale_max)
         )
 
         self.mean_accuracy = self.accuracies
