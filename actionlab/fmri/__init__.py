@@ -9,6 +9,7 @@ from .roi import (
     GlasserAtlas, binarize_mask_array, ROIDirectory, MNI_to_voxels, roi_mask,
     extract_voxels, percent_signal_change, ROI
 )
+from .decode import Decoder
 
 __all__ = [
     'Preprocessor',
@@ -32,4 +33,5 @@ __all__ = [
     'MNI_to_voxels',
     'roi_mask',
     'percent_signal_change',
-    'ROI']
+    'ROI',
+    'Decoder']
