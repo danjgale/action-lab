@@ -66,7 +66,7 @@ def _bunch_single_design_wrapper(design, condition_col, onset_col='onset', durat
     """ Wrapper to work within a Nipype pipeline"""
     import pandas as pd
     from nipype.interfaces.base import Bunch
-   
+
     df = pd.read_csv(design)
     grouped = df.groupby(condition_col)
     # each condition has a list of onsets, durations, and amplitudes associated
@@ -74,7 +74,7 @@ def _bunch_single_design_wrapper(design, condition_col, onset_col='onset', durat
     names = []
     onsets = []
     durations = []
-    
+
     for name, g in grouped:
         names.append(name)
         onsets.append(g[onset_col].tolist())
@@ -214,7 +214,8 @@ class GLM(BaseProcessor):
             ]),
             (self.estimate_contrast, self.datasink, [
                 ('con_images', 'contrasts'),
-                ('spmT_images', 'contrasts.@T')
+                ('spmT_images', 'contrasts.@T'),
+                ('spm_mat_file', 'contrasts.@spm')
             ])
         ])
 
