@@ -7,6 +7,7 @@ from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, auc, confusion_matrix
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn import feature_selection
+from sklearn.model_selection import GridSearchCV
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -54,7 +55,6 @@ def _scale(train_x, test_x, scaler, direction='voxels'):
         # different for each sample/pattern and therefore you cannot transform your
         # test set based on your training set
         train_x = zscore(train_x, axis=1)
-        print(np.std(train_x, axis=1).shape)
         test_x = zscore(test_x, axis=1)
     return train_x, test_x
 
@@ -70,9 +70,23 @@ def _classify(classifier, train_x, train_y, test_x, test_y, scaler=None,
     return accuracy_score(test_y, yhat), yhat, classifier
 
 
+def _rfe(classifier, n_voxels, train_x, test_x):
+    rfe_model = classifier
+    selector = feature_selection.RFE(rfe_model, rfe_voxels)
+    selector.fit(train_x, train_y)
+
+    # narrow down training set
+    train_x = train_x[:, selector.support_]
+    # narrow down test set **based on features only determined in test set**
+    test_x = test_x[:, selector.support_]
+
+    return train_x, test_x, selector
+
+
 def leave_one_run_out(df, classifier, run_column='run', data_column='voxels',
                       response_column='condition', scaler=None,
-                      scale_direction='voxel', rfe_voxels=None, shuffle_data=True):
+                      scale_direction='voxel', rfe_voxels=None, shuffle_data=False,
+                      hyperparameters=None):
     """Perform leave one run out cross-validation"""
 
     if df[response_column].dtype != np.int:
@@ -105,16 +119,18 @@ def leave_one_run_out(df, classifier, run_column='run', data_column='voxels',
         if scaler is not None:
             train_x, test_x = _scale(train_x, test_x, scaler, scale_direction)
 
+        if hyperparameters is not None:
+            nested_folds = len(grouped) - 1
+            gs = GridSearchCV(classifier, hyperparameters, cv=nested_folds,
+                              scoring='accuracy')
+            gs.fit(train_x, train_y)
+            # replace classifier with best model
+            classifier = gs.best_estimator_
+
+
         # if RFE, identify and select top N features based on training data only
         if rfe_voxels is not None:
-            rfe_model = classifier
-            selector = feature_selection.RFE(rfe_model, rfe_voxels)
-            selector.fit(train_x, train_y)
-
-            # narrow down training set
-            train_x = train_x[:, selector.support_]
-            # narrow down test set **based on features only determined in test set**
-            test_x = test_x[:, selector.support_]
+            train_x, test_x, selector = _rfe(classifier, rfe_voxels, train_x, test_x)
 
         accuracy, yhat, model = _classify(classifier, train_x, train_y, test_x, test_y)
 
@@ -159,7 +175,7 @@ def cross_decode(train_data, classifier, test_data, data_column='voxels', respon
 
 class Decoder:
 
-    def __init__(self, data, classifier=SVC(C=1, kernel='linear'), run_column='run',
+    def __init__(self, data, classifier=SVC(kernel='linear'), run_column='run',
                  data_column='voxels', response_column='condition', scaler=StandardScaler(),
                  scale_direction='voxel'):
 
@@ -174,7 +190,8 @@ class Decoder:
         self.n_classes = len(np.unique(self.data[self.response_column]))
 
 
-    def cross_validate(self, shuffle_data=True, conditions=None, rfe_voxels=None):
+    def cross_validate(self, shuffle_data=True, conditions=None, rfe_voxels=None,
+                       hyperparameters=None):
 
         if conditions is not None:
             self.cv_data = self.data[self.data[self.response_column].isin(conditions)]
@@ -188,7 +205,8 @@ class Decoder:
                               scaler=self.scaler,
                               scale_direction=self.scale_direction,
                               shuffle_data=shuffle_data,
-                              rfe_voxels=rfe_voxels)
+                              rfe_voxels=rfe_voxels,
+                              hyperparameters=hyperparameters)
         )
 
         self.mean_accuracy = np.mean(self.accuracies)
