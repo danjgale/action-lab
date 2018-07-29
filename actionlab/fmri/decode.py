@@ -70,9 +70,9 @@ def _classify(classifier, train_x, train_y, test_x, test_y, scaler=None,
     return accuracy_score(test_y, yhat), yhat, classifier
 
 
-def _rfe(classifier, n_voxels, train_x, test_x):
+def _rfe(classifier, n_voxels, train_x, train_y, test_x):
     rfe_model = classifier
-    selector = feature_selection.RFE(rfe_model, rfe_voxels)
+    selector = feature_selection.RFE(rfe_model, n_voxels)
     selector.fit(train_x, train_y)
 
     # narrow down training set
@@ -100,6 +100,7 @@ def leave_one_run_out(df, classifier, run_column='run', data_column='voxels',
     y_list = []
     yhat_list = []
     model_list = []
+    selector_list = []
     for name, g in grouped:
 
         # test data (data of current group, g)
@@ -130,7 +131,8 @@ def leave_one_run_out(df, classifier, run_column='run', data_column='voxels',
 
         # if RFE, identify and select top N features based on training data only
         if rfe_voxels is not None:
-            train_x, test_x, selector = _rfe(classifier, rfe_voxels, train_x, test_x)
+            train_x, test_x, selector = _rfe(classifier, rfe_voxels, train_x, train_y, test_x)
+            selector_list.append(selector)
 
         accuracy, yhat, model = _classify(classifier, train_x, train_y, test_x, test_y)
 
@@ -140,7 +142,9 @@ def leave_one_run_out(df, classifier, run_column='run', data_column='voxels',
         yhat_list.append(yhat)
         model_list.append(model)
 
-    return accuracies, y_list, yhat_list, model_list
+
+
+    return accuracies, y_list, yhat_list, model_list, selector_list
 
 
 def cross_decode(train_data, classifier, test_data, data_column='voxels', response_column='condition',
@@ -198,7 +202,7 @@ class Decoder:
         else:
             self.cv_data = self.data
 
-        self.accuracies, self.test_y, self.yhat, self.classifier = (
+        self.accuracies, self.test_y, self.yhat, self.classifier, selectors = (
             leave_one_run_out(self.cv_data, self.classifier, run_column=self.run_column,
                               data_column=self.data_column,
                               response_column=self.response_column,
@@ -210,6 +214,9 @@ class Decoder:
         )
 
         self.mean_accuracy = np.mean(self.accuracies)
+
+        if len(selectors) > 0:
+            self.rfe_models = selectors
 
 
     def eval_test_set(self, test_data, mean_centre=False, shuffle_data=True,

@@ -176,6 +176,9 @@ class GlasserAtlas:
 def extract_voxels(roi_img, data, output_fn=None, confounds=None):
     """Get timecourse for every voxel in a single ROI"""
     masker = MultiNiftiMasker(roi_img, n_jobs=-1)
+
+    # note that if data is not a list, vstack will not have an effect on the
+    # array output (it will still be a n_volume by n_voxel 2D array)
     voxels = np.vstack(masker.fit_transform(data, confounds=confounds))
 
     if output_fn is None:
