@@ -59,11 +59,9 @@ def _scale(train_x, test_x, scaler, direction='voxels'):
     return train_x, test_x
 
 
-def _classify(classifier, train_x, train_y, test_x, test_y, scaler=None,
+def _classify(classifier, train_x, train_y, test_x, test_y,
               scale_direction='voxels'):
     """Train and evaluate SVM classifier"""
-
-    # apply scaling
 
     classifier.fit(train_x, train_y)
     yhat = classifier.predict(test_x)
@@ -71,6 +69,7 @@ def _classify(classifier, train_x, train_y, test_x, test_y, scaler=None,
 
 
 def _rfe(classifier, n_voxels, train_x, train_y, test_x):
+
     rfe_model = classifier
     selector = feature_selection.RFE(rfe_model, n_voxels)
     selector.fit(train_x, train_y)
@@ -147,10 +146,9 @@ def leave_one_run_out(df, classifier, run_column='run', data_column='voxels',
     return accuracies, y_list, yhat_list, model_list, selector_list
 
 
-def cross_decode(train_data, classifier, test_data, data_column='voxels', response_column='condition',
-                 scaling='voxel', mean_centre=False, shuffle_data=False,
-                 return_as_lists=False, scale_min=-1, scale_max=1):
-
+def cross_decode(train_data, classifier, test_data, data_column='voxels',
+                 response_column='condition', mean_centre=False,
+                 shuffle_data=False, return_as_lists=False):
     if shuffle_data:
         train_data = train_data.sample(frac=1)
         test_data = test_data.sample(frac=1)
@@ -168,8 +166,8 @@ def cross_decode(train_data, classifier, test_data, data_column='voxels', respon
     test_y = test_data[response_column].values
 
 
-    accuracy, yhat, model = _classify(classifier, train_x, train_y, test_x, test_y, scaling=scaling,
-                               scale_min=scale_min, scale_max=scale_max)
+    accuracy, yhat, model = _classify(classifier, train_x, train_y, test_x,
+                                      test_y)
 
     if return_as_lists:
         # used for Decoder to keep API consistent
@@ -231,9 +229,8 @@ class Decoder:
 
         self.accuracies, self.test_y, self.yhat, self.classifier = (
             cross_decode(self.train_data, self.classifier, self.test_data, self.data_column,
-                         self.response_column, self.scaling, mean_centre,
-                         shuffle_data, return_as_lists=True,
-                         scale_min=self.scale_min, scale_max=self.scale_max)
+                         self.response_column, mean_centre,
+                         shuffle_data, return_as_lists=True)
         )
 
         self.mean_accuracy = self.accuracies
