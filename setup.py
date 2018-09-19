@@ -9,10 +9,6 @@ setup(
     author='Dan Gale',
     long_description=open('README.md').read(),
     url='https://github.com/danjgale/action-lab/',
-    tests_require=[
-        'pytest',
-        'pytest-cov'
-    ]
     install_requires=[
         'numpy',
         'scipy',
@@ -21,7 +17,10 @@ setup(
         'scikit-image',
         'nilearn',
         'nipype'
-    ]
+    ],
+    tests_require=[
+        'pytest',
+        'pytest-cov'
+    ],
     setup_requires=['pytest-runner'],
-    tests_require=['pytest'],
 )
