@@ -1,10 +1,10 @@
 
-from distutils.core import setup
+from setuptools import setup, find_packages
 
 setup(
     name='actionlab',
     version='0.0.1',
-    packages=['actionlab'],
+    packages=find_packages(),
     license='MIT',
     author='Dan Gale',
     long_description=open('README.md').read(),
@@ -22,5 +22,5 @@ setup(
         'pytest',
         'pytest-cov'
     ],
-    setup_requires=['pytest-runner'],
+    setup_requires=['pytest-runner']
 )
