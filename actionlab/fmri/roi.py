@@ -297,12 +297,29 @@ def mni_to_voxels(x, y, z):
     return (-x + 90)/2, (y + 126)/2, (z + 72)/2
 
 
-def roi_mask(coordinates, size, fn, mask_type='box', in_file=None):
+def roi_mask(coordinates, size, fname, mask_type='box', in_file=None):
+    """Make binary sphere or box mask centered on voxel coordinates.
 
-    """Make binary sphere or box mask centered on voxel coordinates"""
+    Parameters
+    ----------
+    coordinates : list of int
+        Voxel coordinates (not MNI) for the center of the mask.
+    size : int
+        Size of the mask. If the mask type is 'sphere', size corresponds to the
+        radius.
+    fname : str
+        Name of mask file to be created.
+    mask_type : str, 'box' or 'sphere'
+        Indicates the shape of the mask. Default is 'box'.
+    in_file : str, optional
+        File used to create the mask. If no file is provided, `roi_mask`
+        defaults to using a standard 2mm MNI template.
+
+    """
+
 
     # set up temp files
-    output_dir = os.path.dirname(fn)
+    output_dir = os.path.dirname(fname)
     point_file = os.path.join(output_dir, 'point.nii.gz')
     mask_file = os.path.join(output_dir, 'mask.nii.gz')
 
@@ -329,11 +346,11 @@ def roi_mask(coordinates, size, fn, mask_type='box', in_file=None):
     else:
         bin_string = '-bin'
 
-    binarize = ImageMaths(in_file=mask_file, op_string=bin_string, out_file=fn,
-                          out_data_type='float')
+    binarize = ImageMaths(in_file=mask_file, op_string=bin_string,
+                          out_file=fname, out_data_type='float')
     print(binarize.cmdline)
     binarize.run()
 
     # remove temp files
-    #os.remove(point_file)
-    #os.remove(mask_file)
+    os.remove(point_file)
+    os.remove(mask_file)
