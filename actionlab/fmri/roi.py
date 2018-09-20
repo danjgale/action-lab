@@ -289,7 +289,7 @@ class ROIDirectory(object):
         return roi_list
 
 
-def MNI_to_voxels(x, y, z):
+def mni_to_voxels(x, y, z):
     """Convert MNI mm coordinates into voxel space on a 2mm MNI template.
 
     From https://www.jiscmail.ac.uk/cgi-bin/webadmin?A2=fsl;d95418af.1308
@@ -310,20 +310,30 @@ def roi_mask(coordinates, size, fn, mask_type='box', in_file=None):
         in_file = Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
 
     # make point from coordinate
-    point_string = '-mul 0 -add 1 -roi %d 1 %d 1 %d 1 0 1' % coordinates
+    point_string = '-mul 0 -add 1 -roi {} 1 {} 1 {} 1 0 1'.format(*coordinates)
     point = ImageMaths(in_file=in_file, op_string=point_string, out_file=point_file,
                        out_data_type='float')
+    print(point.cmdline)
     point.run()
     # make sphere from point
     sphere = ImageMaths(in_file=point_file, out_file=mask_file,
                         op_string='-kernel {} {} -fmean'.format(mask_type, size),
                         out_data_type='float')
+    print(sphere.cmdline)
     sphere.run()
     # binarize sphere mask
-    binarize = ImageMaths(in_file=mask_file, op_string='-bin', out_file=fn,
+    if size > 10:
+        # adresses this issue: https://www.jiscmail.ac.uk/cgi-bin/webadmin?A2=i
+        # nd1008&L=FSL&P=R53884&1=FSL&9=A&J=on&d=No+Match%3BMatch%3BMatches&z=4
+        bin_string = '-thr 1e-8 -bin '
+    else:
+        bin_string = '-bin'
+
+    binarize = ImageMaths(in_file=mask_file, op_string=bin_string, out_file=fn,
                           out_data_type='float')
+    print(binarize.cmdline)
     binarize.run()
 
     # remove temp files
-    os.remove(point_file)
-    os.remove(mask_file)
+    #os.remove(point_file)
+    #os.remove(mask_file)
