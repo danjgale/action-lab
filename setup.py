@@ -4,7 +4,8 @@ from setuptools import setup, find_packages
 setup(
     name='actionlab',
     version='0.0.1',
-    packages=find_packages(),
+    packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*",
+                                    "tests"]),
     license='MIT',
     author='Dan Gale',
     long_description=open('README.md').read(),
