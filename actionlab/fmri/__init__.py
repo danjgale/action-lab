@@ -6,7 +6,7 @@ from .run_manager import (
 from .glm import GLM, stack_designs, GroupGLM, LSS
 from .converters import convert_to_nifti
 from .roi import (
-    GlasserAtlas, binarize_mask_array, ROIDirectory, MNI_to_voxels, roi_mask,
+    GlasserAtlas, binarize_mask_array, ROIDirectory, mni_to_voxels, roi_mask,
     extract_voxels, percent_signal_change, ROI
 )
 from .decode import Decoder, cross_decode
@@ -30,7 +30,7 @@ __all__ = [
     'GlasserAtlas',
     'binarize_mask_array',
     'ROIDirectory',
-    'MNI_to_voxels',
+    'mni_to_voxels',
     'roi_mask',
     'percent_signal_change',
     'ROI',
