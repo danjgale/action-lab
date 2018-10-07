@@ -6,6 +6,7 @@ import sys
 import re
 import subprocess
 import json
+import uuid
 import numpy as np
 import pandas as pd
 from scipy.stats import zscore
@@ -320,8 +321,12 @@ def roi_mask(coordinates, size, fname, mask_type='box', in_file=None):
 
     # set up temp files
     output_dir = os.path.dirname(fname)
-    point_file = os.path.join(output_dir, 'point.nii.gz')
-    mask_file = os.path.join(output_dir, 'mask.nii.gz')
+
+    # make temporary ID in case multiple masks are being made or point/mask
+    # files already exist
+    tmp_id = str(uuid.uuid4())
+    point_file = os.path.join(output_dir, 'point-{}.nii.gz'.format(tmp_id))
+    mask_file = os.path.join(output_dir, 'mask-{}.nii.gz'.format(tmp_id))
 
     if in_file is None:
         in_file = Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
