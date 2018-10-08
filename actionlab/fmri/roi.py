@@ -230,7 +230,7 @@ class ROIDirectory(object):
             )
 
         timecourse_labels.to_csv(
-            os.path.join(self.path, timecourse_labels),
+            os.path.join(self.path, 'labels.csv'),
             header=False,
             index=False
         )
