@@ -228,7 +228,6 @@ class ROIDirectory(object):
                 v,
                 data_imgs,
                 os.path.join(self.path, '{}.csv'.format(k)),
-                average,
                 confounds
             )
 
