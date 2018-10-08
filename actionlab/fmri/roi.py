@@ -208,11 +208,9 @@ def voxels_to_df(fn, labels):
 class ROIDirectory(object):
 
     def __init__(self, path):
-
-        # if not os.path.exists(path):
-        #     os.mkdir(path)
-
         self.path = path
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
 
 
     def create_from_masks(self, roi_imgs, data_imgs, timecourse_labels=None,
