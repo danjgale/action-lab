@@ -88,10 +88,10 @@ def leave_one_run_out(df, classifier, run_column='run', data_column='voxels',
                       hyperparameters=None):
     """Perform leave one run out cross-validation"""
 
-    if df[response_column].dtype != np.int:
+    if not np.issubdtype(df[response_column].dtype, np.number):
         # prevent weird bug in SVC function which does not always correctly
         # interpret string class labels
-        raise TypeError('Data in response column must be of type int')
+        raise TypeError('Data in response column must be of type int or float')
 
     grouped = df.groupby('run')
 
