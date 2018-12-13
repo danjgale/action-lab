@@ -200,7 +200,7 @@ class Decoder:
         else:
             self.cv_data = self.data
 
-        self.accuracies, self.test_y, self.yhat, self.classifier, selectors = (
+        self.accuracies, self.test_y, self.yhat, self.models, selectors = (
             leave_one_run_out(self.cv_data, self.classifier, run_column=self.run_column,
                               data_column=self.data_column,
                               response_column=self.response_column,
@@ -227,7 +227,7 @@ class Decoder:
             self.train_data = self.data
             self.test_data = test_data
 
-        self.accuracies, self.test_y, self.yhat, self.classifier = (
+        self.accuracies, self.test_y, self.yhat, self.models = (
             cross_decode(self.train_data, self.classifier, self.test_data, self.data_column,
                          self.response_column, mean_centre,
                          shuffle_data, return_as_lists=True)
