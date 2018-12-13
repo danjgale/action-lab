@@ -62,10 +62,10 @@ def _scale(train_x, test_x, scaler, direction='voxels'):
 def _classify(classifier, train_x, train_y, test_x, test_y,
               scale_direction='voxels'):
     """Train and evaluate SVM classifier"""
-
-    classifier.fit(train_x, train_y)
-    yhat = classifier.predict(test_x)
-    return accuracy_score(test_y, yhat), yhat, classifier
+    clf = classifier
+    clf.fit(train_x, train_y)
+    yhat = clf.predict(test_x)
+    return accuracy_score(test_y, yhat), yhat, clf
 
 
 def _rfe(classifier, n_voxels, train_x, train_y, test_x):
