@@ -7,12 +7,6 @@ import pandas as pd
 
 ### helper functions for data I/O
 
-def _get_trial(df, block, trial_number, block_col='BlockNumber',
-               trial_col='TrialNumber'):
-    """Returns specified trial from specified block. Assumes the block and trial
-     columns are consistent across experiments"""
-    return df.groupby([block_col, trial_col]).get_group((block, trial_number))
-
 
 def _get_data_start(fn, verify_with='HeaderLines', add=1, sep='\t'):
     """Reads first line of a data file to determine header rows in file.
@@ -194,8 +188,17 @@ class SubjectData:
     def get_trial(self, block, trial_number, block_col='BlockNumber',
                   trial_col='TrialNumber'):
         """Method implication of get_trial()"""
-        return _get_trial(self.data, block, trial_number, block_col='BlockNumber',
-                          trial_col='TrialNumber')
+
+
+        trials = [i for i in self.data_list
+                  if (i.headers[block_col] == str(block)) &
+                  (i.headers[trial_col] == '3')]
+
+        if len(trials) > 1:
+            raise Exception('Multiple data files found; check actual data.')
+        else:
+            return trials[0]
+
 
     def get_header(self, name, dtype=None, index=None):
         """Get header value from every trial"""
