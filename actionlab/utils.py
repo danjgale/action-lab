@@ -187,12 +187,10 @@ class SubjectData:
 
     def get_trial(self, block, trial_number, block_col='BlockNumber',
                   trial_col='TrialNumber'):
-        """Method implication of get_trial()"""
-
 
         trials = [i for i in self.data_list
                   if (i.headers[block_col] == str(block)) &
-                  (i.headers[trial_col] == '3')]
+                  (i.headers[trial_col] == str(trial_number))]
 
         if len(trials) > 1:
             raise Exception('Multiple data files found; check actual data.')
