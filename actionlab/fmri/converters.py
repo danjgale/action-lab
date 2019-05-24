@@ -22,7 +22,7 @@ def _make_path(path, return_str=False):
 def convert_to_nifti(input_dir, output_dir, compress=True):
 
     if compress:
-            compress_flag = 'i'
+        compress_flag = 'i'
     else:
         compress_flag = 'n'
 

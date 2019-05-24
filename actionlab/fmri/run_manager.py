@@ -192,10 +192,8 @@ class RunManager:
     def export(self, fn, as_numbers=False, full_path=False):
 
         if as_numbers:
-
             if not hasattr(self, 'subject_run_numbers'):
                 raise AttributeError("'RunManager' object has no attribute 'subject_run_numbers'. Use get_run_numbers() prior to export().")
-
             write_obj = self.subject_run_numbers
         else:
 

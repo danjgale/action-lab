@@ -46,7 +46,9 @@ def stack_designs(design_list, onset_col='onset', duration_col='duration'):
     return pd.concat(concat_list, axis=0)
 
 
-def bunch_single_design(df, condition_col, onset_col='onset', duration_col='duration'):
+def bunch_single_design(df, condition_col, onset_col='onset',
+                        duration_col='duration', regressors=None,
+                        regressor_names=None):
     """Create bunch object from a design dataframe"""
     grouped = df.groupby(condition_col)
     # each condition has a list of onsets, durations, and amplitudes associated
@@ -59,7 +61,11 @@ def bunch_single_design(df, condition_col, onset_col='onset', duration_col='dura
         onsets.append(g[onset_col].tolist())
         durations.append(g[duration_col].tolist())
 
-    return Bunch(conditions=names, onsets=onsets, durations=durations)
+    if regressors is not None:
+        return Bunch(conditions=names, onsets=onsets, durations=durations,
+                      regressors=regressors, regressor_names=regressor_names)
+    else:
+        return Bunch(conditions=names, onsets=onsets, durations=durations)
 
 
 def _bunch_single_design_wrapper(design, condition_col, onset_col='onset', duration_col='duration'):
@@ -85,14 +91,17 @@ def _bunch_single_design_wrapper(design, condition_col, onset_col='onset', durat
 
 
 def bunch_designs(design_list, condition_col, onset_col='onset',
-                  duration_col='duration'):
+                  duration_col='duration', regressors=None,
+                  regressor_names=None):
     """Create bunch object (event, start, duration, amplitudes) for
     SpecifyModel() using existing event files
     """
     design_tables = _check_design_input(design_list)
     bunch_list = []
-    for i in design_tables:
-        bunch_list.append(bunch_single_design(i, condition_col, onset_col, duration_col))
+    for i, j in enumerate(design_tables):
+        bunch_list.append(bunch_single_design(j, condition_col, onset_col,
+                                              duration_col, regressors[i],
+                                              regressor_names[i]))
 
     return bunch_list
 
@@ -112,7 +121,8 @@ class GLM(BaseProcessor):
     def build(self, design, contrasts, realign_params, output_path=None,
               high_pass_filter_cutoff=100, TR=2.0, input_units='secs',
               workflow_name='glm', design_onset_col='onset',
-              design_duration_col='duration', design_condition_col='condition'):
+              design_duration_col='duration', design_condition_col='condition',
+              regressors=None, regressor_names=None):
 
         # note that this concatenates runs, so for a typical experiment in which
         # all runs have the same conditions but in different orders, you input
@@ -144,7 +154,9 @@ class GLM(BaseProcessor):
 
         self.sub_info = bunch_designs(self.design, design_condition_col,
                                       onset_col=design_onset_col,
-                                      duration_col=design_duration_col)
+                                      duration_col=design_duration_col,
+                                      regressors=regressors,
+                                      regressor_names=regressor_names)
 
         self.model_spec = Node(
             SpecifySPMModel(
@@ -377,10 +389,10 @@ def single_trial_design(design, condition_col='condition', lm_type='lss'):
 
         df = design.copy()
 
-        # label condition based on trial vs rest
+        # drop row of interest, label remaining as 'other'
         df.drop(ix, inplace=True)
         df[condition_col] = 'other'
-
+        # add back in row of interest
         design_list.append(df.append(row))
 
     return design_list
